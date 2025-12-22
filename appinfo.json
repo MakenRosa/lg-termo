@@ -1,0 +1,10 @@
+{
+  "id": "com.domain.app",
+  "version": "1.1.2",
+  "vendor": "My Company",
+  "type": "web",
+  "main": "index.html",
+  "title": "TermoTV",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png"
+}
