@@ -155,7 +155,7 @@ input:focus {
 
 .main {
   display: grid;
-  grid-template-rows: 1fr auto auto auto;
+  grid-template-rows: auto 1fr auto auto auto;
   gap: var(--main-gap);
   min-height: 0;
 }
@@ -279,6 +279,40 @@ input:focus {
   color: var(--text);
 }
 
+.viewer-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.viewer-title {
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.viewer-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.viewer-btn {
+  font-size: 20px;
+  padding: 10px 12px;
+}
+
+.app[data-viewer="1"] .keyboard,
+.app[data-viewer="1"] .message,
+.app[data-viewer="1"] .player-status,
+.app[data-viewer="1"] .topbar {
+  display: none;
+}
+
 .keyboard {
   display: grid;
   gap: var(--kb-gap);
@@ -348,6 +382,11 @@ input:focus {
   overflow: hidden;
 }
 
+.modal--settings {
+  width: min(760px, 92vw);
+  max-height: min(900px, 90vh);
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -357,7 +396,7 @@ input:focus {
 }
 
 .modal-title {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 900;
 }
 
@@ -372,7 +411,7 @@ input:focus {
   border: 2px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
   padding: 12px 14px;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 900;
 }
 
@@ -385,7 +424,7 @@ input:focus {
 }
 
 .p {
-  font-size: 22px;
+  font-size: 26px;
   line-height: 1.35;
   margin: 0 0 12px 0;
   color: var(--text);
@@ -394,7 +433,7 @@ input:focus {
 .list {
   margin: 0 0 12px 18px;
   padding: 0;
-  font-size: 22px;
+  font-size: 26px;
   color: var(--text);
 }
 
@@ -407,7 +446,7 @@ input:focus {
 
 .stats-section-title {
   margin-top: 8px;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
 }
 
@@ -426,7 +465,7 @@ input:focus {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .stats-compare-row--active {
@@ -434,12 +473,17 @@ input:focus {
   box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.2) inset;
 }
 
+.stats-compare-row--selected {
+  border-color: rgba(34, 197, 94, 0.8);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18) inset;
+}
+
 .stats-compare-header {
   background: transparent;
   border: 0;
   padding: 4px 12px;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
   box-shadow: none;
 }
@@ -455,8 +499,19 @@ input:focus {
   justify-content: flex-start;
 }
 
+.stats-compare-name-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 900;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
 .stats-compare-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 900;
 }
 
@@ -473,17 +528,17 @@ input:focus {
 }
 
 .stat-value {
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 900;
 }
 
 .stat-label {
-  font-size: 18px;
+  font-size: 20px;
   color: var(--muted);
 }
 
 .dist-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
   margin-bottom: 10px;
 }
@@ -501,7 +556,7 @@ input:focus {
 }
 
 .dist-label {
-  font-size: 20px;
+  font-size: 22px;
   text-align: right;
   color: var(--muted);
 }
@@ -531,24 +586,29 @@ input:focus {
   margin: 12px 0;
 }
 
+.modal--settings .settings-row {
+  grid-template-columns: minmax(240px, 1fr) auto;
+  justify-content: start;
+}
+
 .settings-label {
-  font-size: 20px;
+  font-size: 22px;
   color: var(--muted);
 }
 
 .settings-value {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
 }
 
 .settings-section-title {
   margin-top: 12px;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
 }
 
 .input {
-  font-size: 20px;
+  font-size: 22px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 2px solid rgba(255, 255, 255, 0.14);
@@ -562,8 +622,14 @@ input:focus {
   gap: 8px;
 }
 
+.modal--settings .date-inputs {
+  grid-template-columns: repeat(3, 88px);
+  justify-content: start;
+}
+
 .date-input {
   text-align: center;
+  width: 88px;
 }
 
 .settings-actions {
@@ -625,13 +691,13 @@ input:focus {
   background: rgba(255, 255, 255, 0.12);
   display: grid;
   place-items: center;
-  font-size: 34px;
+  font-size: 36px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .profile-card-name {
-  font-size: 20px;
+  font-size: 22px;
   text-align: center;
 }
 
@@ -656,6 +722,10 @@ input:focus {
   align-items: center;
 }
 
+.modal--settings .profile-row {
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
 .profile-name {
   display: flex;
   align-items: center;
@@ -670,24 +740,29 @@ input:focus {
 
 .profile-input {
   width: 100%;
+  max-width: 260px;
 }
 
 .profile-tag {
   padding: 4px 8px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 900;
   background: rgba(125, 211, 252, 0.2);
   color: var(--text);
 }
 
+.profile-tag--view {
+  background: rgba(34, 197, 94, 0.2);
+}
+
 .profile-limit {
-  font-size: 18px;
+  font-size: 20px;
   color: var(--muted);
 }
 
 .multi-select-status {
-  font-size: 20px;
+  font-size: 22px;
   color: var(--muted);
   margin: 8px 0 12px;
 }
@@ -698,20 +773,25 @@ input:focus {
   margin-top: 10px;
 }
 
+.multi-result-item {
+  display: grid;
+  gap: 6px;
+}
+
 .multi-result-row {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 0.8fr;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .multi-result-name {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 900;
 }
 
@@ -720,6 +800,18 @@ input:focus {
   text-align: center;
   font-weight: 800;
 }
+
+.multi-result-secrets {
+  font-size: 20px;
+  color: var(--muted);
+  padding: 0 8px;
+}
+
+.multi-result-view {
+  font-size: 20px;
+  padding: 10px 12px;
+}
+
 
 .modal-actions {
   display: flex;
@@ -737,31 +829,13 @@ input:focus {
 }
 
 .secret {
-  font-size: 22px;
+  font-size: 26px;
   color: var(--text);
 }
 
 .secret-word {
   font-weight: 900;
   letter-spacing: 0.5px;
-}
-
-.share {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 12px;
-  font-size: 16px;
-  white-space: pre-wrap;
-  color: var(--text);
-}
-
-.qr {
-  display: block;
-  margin: 14px auto;
-  background: #ffffff;
-  border-radius: 14px;
-  border: 6px solid rgba(255, 255, 255, 0.12);
 }
 
 /* Colorblind mode: change palette + add patterns */

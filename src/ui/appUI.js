@@ -34,6 +34,7 @@ export function createAppUI({
   onBackFromPhysical,
   onLetterFromPhysical,
   onNavFallback,
+  onViewerAction,
   onModalRequestClose,
 }) {
   const app = el("div", { class: "app" });
@@ -68,6 +69,41 @@ export function createAppUI({
   topbar.append(title, modeWrap, actionsWrap);
 
   const main = el("main", { class: "main" });
+  const viewerBar = el("div", { class: "viewer-bar" });
+  const viewerTitle = el("div", { class: "viewer-title" });
+  const viewerActions = el("div", { class: "viewer-actions" });
+  const viewerPrev = el(
+    "button",
+    {
+      class: "btn btn--ghost viewer-btn",
+      type: "button",
+      dataset: { role: "viewer", viewerIndex: "0" },
+      onclick: () => onViewerAction && onViewerAction("prev"),
+    },
+    ["Anterior"]
+  );
+  const viewerNext = el(
+    "button",
+    {
+      class: "btn btn--ghost viewer-btn",
+      type: "button",
+      dataset: { role: "viewer", viewerIndex: "1" },
+      onclick: () => onViewerAction && onViewerAction("next"),
+    },
+    ["Pr\u00F3ximo"]
+  );
+  const viewerClose = el(
+    "button",
+    {
+      class: "btn viewer-btn",
+      type: "button",
+      dataset: { role: "viewer", viewerIndex: "2" },
+      onclick: () => onViewerAction && onViewerAction("close"),
+    },
+    ["Voltar"]
+  );
+  viewerActions.append(viewerPrev, viewerNext, viewerClose);
+  viewerBar.append(viewerTitle, viewerActions);
   const boards = createBoards();
   const playerStatus = el("div", { class: "player-status" });
   const message = el("div", { class: "message", role: "status", "aria-live": "polite" });
@@ -79,12 +115,13 @@ export function createAppUI({
 
   const modalHost = createModalHost({ onRequestClose: onModalRequestClose });
 
-  main.append(boards.root, playerStatus, message, keyboard.root);
+  main.append(viewerBar, boards.root, playerStatus, message, keyboard.root);
   app.append(topbar, main, modalHost.root);
   root.append(app);
 
   let lastKeyboardPos = keyboard.firstKey();
   let lastTopIndex = 0;
+  let viewerActive = false;
 
   function focusTop(index) {
     const all = app.querySelectorAll("button[data-role='top']");
@@ -183,6 +220,21 @@ export function createAppUI({
       return false;
     }
 
+    if (role === "viewer") {
+      const buttons = Array.from(app.querySelectorAll("button[data-role='viewer']"));
+      const idx = Math.max(0, buttons.indexOf(active));
+      if (buttons.length === 0) return true;
+      if (["ArrowLeft", "ArrowUp"].includes(key)) {
+        buttons[(idx - 1 + buttons.length) % buttons.length].focus();
+        return true;
+      }
+      if (["ArrowRight", "ArrowDown"].includes(key)) {
+        buttons[(idx + 1) % buttons.length].focus();
+        return true;
+      }
+      return false;
+    }
+
     return onNavFallback ? !!onNavFallback(key) : false;
   }
 
@@ -203,6 +255,14 @@ export function createAppUI({
     if (isBackKey(e)) {
       e.preventDefault();
       if (onBackFromPhysical) onBackFromPhysical();
+      return;
+    }
+
+    if (viewerActive) {
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) && !isTypingTarget(document.activeElement)) {
+        e.preventDefault();
+        handleNavKey(e.key);
+      }
       return;
     }
 
@@ -245,7 +305,7 @@ export function createAppUI({
     app.dataset.colorblind = enabled ? "1" : "0";
   }
 
-  function render(state, { settings, player }) {
+  function render(state, { settings, player, viewer }) {
     app.dataset.mode = state.mode;
     const selected =
       state.mode === Modes.termo ? 0 : state.mode === Modes.dueto ? 1 : state.mode === Modes.quarteto ? 2 : 0;
@@ -254,7 +314,17 @@ export function createAppUI({
     message.textContent = state.lastMessage || "";
     setColorblind(!!settings.colorblind);
 
-    if (player) {
+    viewerActive = !!viewer;
+    app.dataset.viewer = viewerActive ? "1" : "0";
+    if (viewer) {
+      viewerTitle.textContent = `Visualizando: ${viewer.name} (${viewer.index}/${viewer.total})`;
+      viewerBar.style.display = "flex";
+    } else {
+      viewerTitle.textContent = "";
+      viewerBar.style.display = "none";
+    }
+
+    if (player && !viewerActive) {
       playerStatus.textContent = `Jogador: ${player.name} (${player.index}/${player.total})`;
       playerStatus.style.display = "block";
       app.dataset.multiplayer = "1";
@@ -282,6 +352,10 @@ export function createAppUI({
   }
 
   function initialFocus() {
+    if (viewerActive) {
+      viewerClose.focus();
+      return;
+    }
     focusKeyboard(lastKeyboardPos);
   }
 

@@ -95,10 +95,6 @@ function buildDailySecretsByMode({ pool, dayId, seed }) {
   };
 }
 
-function safeClipboardWrite(text) {
-  if (!navigator.clipboard || !navigator.clipboard.writeText) return Promise.reject(new Error("Clipboard not supported"));
-  return navigator.clipboard.writeText(text);
-}
 
 async function main() {
   const root = document.getElementById("root");
@@ -170,6 +166,20 @@ async function main() {
 
   function saveStatsStore() {
     saveJSON(STATS_KEY, statsStore);
+  }
+
+  function clearProfileProgress(profileId) {
+    const prefix = `lgtermo_progress_${profileId}_`;
+    const keys = [];
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) keys.push(key);
+      }
+    } catch {
+      return;
+    }
+    keys.forEach((key) => remove(key));
   }
 
   function profileSeedFor(profileId) {
@@ -267,6 +277,7 @@ async function main() {
   }
 
   let multiplayer = null;
+  let viewer = null;
   let turnLock = false;
   let turnTimer = null;
   let state = loadOrCreateStateForProfile({
@@ -280,6 +291,9 @@ async function main() {
   const ui = createAppUI({
     root,
     onModeChange: (mode) => {
+      if (isViewerActive()) {
+        closeViewer({ returnToModal: false });
+      }
       if (multiplayer) {
         multiSettings = { ...multiSettings, mode };
         settingsStore.multiSettings = multiSettings;
@@ -304,6 +318,9 @@ async function main() {
       }
     },
     onTopAction: (action) => {
+      if (isViewerActive() && action !== "exit") {
+        closeViewer({ returnToModal: false });
+      }
       if (action === "help") ui.modal.renderHelp();
       else if (action === "stats")
         ui.modal.renderStats({
@@ -316,6 +333,7 @@ async function main() {
       else if (action === "exit") exitApp();
     },
     onKeyboardAction: (action) => {
+      if (isViewerActive()) return;
       if (turnLock) return;
       if (action.type === "letter") {
         state = addLetter(state, action.letter);
@@ -331,8 +349,15 @@ async function main() {
         doSubmit();
       }
     },
-    onSubmitFromPhysicalEnter: () => doSubmit(),
+    onSubmitFromPhysicalEnter: () => {
+      if (isViewerActive()) return;
+      doSubmit();
+    },
     onBackFromPhysical: () => {
+      if (isViewerActive()) {
+        closeViewer({ returnToModal: true });
+        return;
+      }
       if (ui.modal.isOpen()) ui.modal.close();
       else {
         if (turnLock) return;
@@ -343,11 +368,22 @@ async function main() {
       }
     },
     onLetterFromPhysical: (letter) => {
+      if (isViewerActive()) return;
       if (turnLock) return;
       state = addLetter(state, letter);
       updateActiveState(state);
       renderActiveState();
       persistActiveState();
+    },
+    onViewerAction: (action) => {
+      if (!isViewerActive()) return;
+      if (action === "close") {
+        closeViewer({ returnToModal: true });
+      } else if (action === "prev") {
+        moveViewer(-1);
+      } else if (action === "next") {
+        moveViewer(1);
+      }
     },
     onModalRequestClose: () => ui.initialFocus(),
   });
@@ -384,6 +420,33 @@ async function main() {
     return multiplayer ? multiSettings : settings;
   }
 
+  function isViewerActive() {
+    return !!viewer;
+  }
+
+  function viewerProfileId() {
+    if (!viewer || !multiplayer) return null;
+    const ids = multiplayer.profileIds;
+    return ids[viewer.index] || ids[0] || null;
+  }
+
+  function viewerState() {
+    if (!viewer || !multiplayer) return null;
+    const profileId = viewerProfileId();
+    return profileId ? multiplayer.states[profileId] : null;
+  }
+
+  function viewerInfo() {
+    if (!viewer || !multiplayer) return null;
+    const profileId = viewerProfileId();
+    const profile = settingsStore.profiles.find((p) => p.id === profileId);
+    return {
+      name: profile ? profile.name : "Perfil",
+      index: viewer.index + 1,
+      total: multiplayer.profileIds.length,
+    };
+  }
+
   function activePlayerInfo() {
     if (!multiplayer) return null;
     const mode = activeMode();
@@ -417,7 +480,10 @@ async function main() {
   }
 
   function renderActiveState({ focus = true } = {}) {
-    ui.render(state, { settings: activeSettingsRef(), player: activePlayerInfo() });
+    const activeViewer = isViewerActive();
+    const renderState = activeViewer ? viewerState() || state : state;
+    const player = activeViewer ? null : activePlayerInfo();
+    ui.render(renderState, { settings: activeSettingsRef(), player, viewer: viewerInfo() });
     if (focus && !ui.modal.isOpen()) ui.initialFocus();
   }
 
@@ -479,9 +545,37 @@ async function main() {
   function stopMultiplayer() {
     multiplayer = null;
     turnLock = false;
+    viewer = null;
     if (turnTimer) {
       clearTimeout(turnTimer);
       turnTimer = null;
+    }
+  }
+
+  function moveViewer(delta) {
+    if (!viewer || !multiplayer) return;
+    const total = multiplayer.profileIds.length;
+    if (total === 0) return;
+    viewer.index = (viewer.index + delta + total) % total;
+    renderActiveState();
+  }
+
+  function openViewer(profileId) {
+    if (!multiplayer) return;
+    const ids = multiplayer.profileIds;
+    let idx = ids.indexOf(profileId);
+    if (idx < 0) idx = 0;
+    viewer = { index: idx };
+    renderActiveState();
+  }
+
+  function closeViewer({ returnToModal } = {}) {
+    if (!viewer) return;
+    const shouldReturn = returnToModal !== false;
+    viewer = null;
+    renderActiveState();
+    if (shouldReturn) {
+      renderMultiplayerResult({ force: true });
     }
   }
 
@@ -732,6 +826,7 @@ async function main() {
             const idx = settingsStore.profiles.findIndex((p) => p.id === profileId);
             if (idx === -1) return;
             const wasMultiplayer = !!multiplayer;
+            clearProfileProgress(profileId);
             settingsStore.profiles.splice(idx, 1);
             delete settingsStore.profileSettings[profileId];
             delete statsStore.profiles[profileId];
@@ -786,18 +881,6 @@ async function main() {
     const show = () =>
       ui.modal.renderResult({
         state,
-        onShowQr: (text) => ui.modal.renderQr({ text, onCloseQr: show }),
-        onCopy: (text) => {
-          safeClipboardWrite(text)
-            .then(() => {
-              state = setMessage(state, "Texto copiado.");
-              renderActiveState();
-            })
-            .catch(() => {
-              state = setMessage(state, "Nao foi possivel copiar.");
-              renderActiveState();
-            });
-        },
       });
 
     show();
@@ -811,8 +894,7 @@ async function main() {
     return playerState.maxAttempts;
   }
 
-  function showMultiplayerResult() {
-    if (!multiplayer || multiplayer.resultShown) return;
+  function buildMultiplayerResultData() {
     const players = multiplayer.profileIds.map((profileId) => {
       const profile = settingsStore.profiles.find((p) => p.id === profileId);
       const playerState = multiplayer.states[profileId];
@@ -823,6 +905,7 @@ async function main() {
         status: playerState.status,
         attempts,
         attemptsLabel: playerState.status === "won" ? `${attempts}/${playerState.maxAttempts}` : `X/${playerState.maxAttempts}`,
+        secrets: playerState.secrets.map((s) => s.original),
       };
     });
     const winners = players.filter((p) => p.status === "won");
@@ -836,15 +919,31 @@ async function main() {
         outcome = `Empate: ${top.map((p) => p.name).join(", ")}`;
       }
     }
+    return { players, outcome };
+  }
+
+  function renderMultiplayerResult({ force } = {}) {
+    if (!multiplayer) return;
+    const { players, outcome } = buildMultiplayerResultData();
     ui.modal.renderMultiplayerResult({
       mode: state.mode,
       outcome,
       players,
+      onViewPlayer: (profileId) => {
+        ui.modal.close();
+        openViewer(profileId);
+      },
     });
-    multiplayer.resultShown = true;
+    if (!force) multiplayer.resultShown = true;
+  }
+
+  function showMultiplayerResult() {
+    if (!multiplayer || multiplayer.resultShown) return;
+    renderMultiplayerResult();
   }
 
   function doSubmit() {
+    if (isViewerActive()) return;
     if (turnLock) return;
     const before = state;
     const next = submitGuess(state, { dictionarySet: lists.dictionarySet });

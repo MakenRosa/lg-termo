@@ -1,7 +1,5 @@
 ﻿import { el, clear } from "./dom.js";
 import { modeConfig } from "../core/modes.js";
-import { buildShareText } from "../core/share.js";
-import { makeQrCanvas } from "./qr.js";
 
 const HELP_EMOJI = Object.freeze({
   correct: "\uD83D\uDFE9",
@@ -9,9 +7,9 @@ const HELP_EMOJI = Object.freeze({
   absent: "\u2B1B",
 });
 
-function modalShell({ title, onClose, showClose = true }) {
+function modalShell({ title, onClose, showClose = true, className = "" }) {
   const overlay = el("div", { class: "modal-overlay", role: "dialog", "aria-modal": "true" });
-  const modal = el("div", { class: "modal" });
+  const modal = el("div", { class: `modal ${className}`.trim() });
   const headerChildren = [el("div", { class: "modal-title", text: title })];
   if (showClose) {
     headerChildren.push(
@@ -122,6 +120,9 @@ export function createModalHost({ onRequestClose }) {
 
     body.append(el("p", { class: "p" }, ["Comparativo por perfil."]));
     const compare = el("div", { class: "stats-compare" });
+    const rowsById = new Map();
+    const viewTags = new Map();
+    let selectedProfileId = currentProfileId;
     compare.append(
       el("div", { class: "stats-compare-row stats-compare-header" }, [
         compareHeaderCell("Perfil", "stats-compare-name"),
@@ -139,54 +140,87 @@ export function createModalHost({ onRequestClose }) {
       const isCurrent = profile.id === currentProfileId;
       const name = String(profile.name || "-");
       const rowClass = `stats-compare-row ${isCurrent ? "stats-compare-row--active" : ""}`.trim();
-      const nameCell = el("div", { class: "stats-compare-cell stats-compare-name" }, [
-        el("span", { class: "stats-compare-title", text: name }),
-        isCurrent ? el("span", { class: "profile-tag", text: "Atual" }) : null,
-      ].filter(Boolean));
-      compare.append(
-        el("div", { class: rowClass }, [
-          nameCell,
-          compareValueCell(ms.played),
-          compareValueCell(ms.wins),
-          compareValueCell(winPct),
-          compareValueCell(ms.currentStreak),
-          compareValueCell(ms.bestStreak),
-        ])
+      const nameBtn = el(
+        "button",
+        { class: "stats-compare-name-btn", type: "button", onclick: () => selectProfile(profile.id) },
+        [el("span", { class: "stats-compare-title", text: name })]
       );
+      const viewTag = el("span", { class: "profile-tag profile-tag--view", text: "Visualizacao" });
+      viewTag.style.display = "none";
+      viewTags.set(profile.id, viewTag);
+      const nameCell = el(
+        "div",
+        { class: "stats-compare-cell stats-compare-name" },
+        [nameBtn, isCurrent ? el("span", { class: "profile-tag", text: "Atual" }) : null, viewTag].filter(Boolean)
+      );
+      const row = el("div", { class: rowClass }, [
+        nameCell,
+        compareValueCell(ms.played),
+        compareValueCell(ms.wins),
+        compareValueCell(winPct),
+        compareValueCell(ms.currentStreak),
+        compareValueCell(ms.bestStreak),
+      ]);
+      rowsById.set(profile.id, row);
+      compare.append(row);
     });
     body.append(compare);
 
-    const currentProfile = list.find((p) => p.id === currentProfileId);
-    const currentName = currentProfile ? currentProfile.name : "Perfil atual";
-    const currentStats = modeStatsFor(currentProfileId);
-    const currentWinPct = currentStats.played ? Math.round((currentStats.wins / currentStats.played) * 100) : 0;
-    body.append(el("div", { class: "stats-section-title", text: `Perfil atual: ${currentName}` }));
-    body.append(
-      el("div", { class: "stats-grid" }, [
-        statBox("Jogos", currentStats.played),
-        statBox(`Vit\u00F3rias`, currentStats.wins),
-        statBox("%", `${currentWinPct}`),
-        statBox(`Sequ\u00EAncia`, currentStats.currentStreak),
-        statBox("Melhor", currentStats.bestStreak),
-      ])
-    );
-
+    const detailTitle = el("div", { class: "stats-section-title" });
+    const detailGrid = el("div", { class: "stats-grid" });
     const dist = el("div", { class: "dist" });
-    dist.append(el("div", { class: "dist-title", text: `Distribui\u00E7\u00E3o (vit\u00F3rias)` }));
-    const rows = el("div", { class: "dist-rows" });
-    for (let i = 1; i <= cfg.maxAttempts; i += 1) {
-      const count = (currentStats.distribution && currentStats.distribution[String(i)]) || 0;
-      rows.append(
-        el("div", { class: "dist-row" }, [
-          el("div", { class: "dist-label", text: String(i) }),
-          el("div", { class: "dist-barwrap" }, [
-            el("div", { class: "dist-bar", style: `--v:${count}` }, [count]),
-          ]),
-        ])
-      );
+    const distTitle = el("div", { class: "dist-title" });
+    const distRows = el("div", { class: "dist-rows" });
+    dist.append(distTitle, distRows);
+    body.append(detailTitle, detailGrid, dist);
+
+    function selectProfile(profileId) {
+      selectedProfileId = profileId;
+      updateSelection();
+      renderDetail();
     }
-    dist.append(rows);
-    body.append(dist);
+
+    function updateSelection() {
+      rowsById.forEach((row, id) => {
+        row.classList.toggle("stats-compare-row--selected", id === selectedProfileId);
+      });
+      viewTags.forEach((tag, id) => {
+        tag.style.display = id === selectedProfileId ? "inline-flex" : "none";
+      });
+    }
+
+    function renderDetail() {
+      const target = list.find((p) => p.id === selectedProfileId) || list[0];
+      if (!target) return;
+      const ms = modeStatsFor(target.id);
+      const winPct = ms.played ? Math.round((ms.wins / ms.played) * 100) : 0;
+      detailTitle.textContent = `Perfil: ${target.name || "-"}`;
+      clear(detailGrid);
+      detailGrid.append(
+        statBox("Jogos", ms.played),
+        statBox("Vit\u00F3rias", ms.wins),
+        statBox("%", `${winPct}`),
+        statBox("Sequ\u00EAncia", ms.currentStreak),
+        statBox("Melhor", ms.bestStreak)
+      );
+
+      distTitle.textContent = "Distribui\u00E7\u00E3o (vit\u00F3rias)";
+      clear(distRows);
+      for (let i = 1; i <= cfg.maxAttempts; i += 1) {
+        const count = (ms.distribution && ms.distribution[String(i)]) || 0;
+        distRows.append(
+          el("div", { class: "dist-row" }, [
+            el("div", { class: "dist-label", text: String(i) }),
+            el("div", { class: "dist-barwrap" }, [
+              el("div", { class: "dist-bar", style: `--v:${count}` }, [count]),
+            ]),
+          ])
+        );
+      }
+    }
+
+    updateSelection();
+    renderDetail();
 
     show(overlay);
     focusFirst();
@@ -212,7 +246,7 @@ export function createModalHost({ onRequestClose }) {
     onRenameProfile,
     onDeleteProfile,
   }) {
-    const { overlay, body } = modalShell({ title: `Configura\u00E7\u00F5es`, onClose: close });
+    const { overlay, body } = modalShell({ title: `Configura\u00E7\u00F5es`, onClose: close, className: "modal--settings" });
     const now = new Date();
     const todayParts = {
       y: String(now.getFullYear()),
@@ -503,7 +537,7 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
-  function renderResult({ state, onShowQr, onCopy, onCloseResult }) {
+  function renderResult({ state, onCloseResult }) {
     const cfg = modeConfig(state.mode);
     const title = state.status === "won" ? `Voc\u00EA venceu!` : "Fim de jogo";
     const { overlay, body } = modalShell({ title, onClose: onCloseResult || close });
@@ -518,41 +552,11 @@ export function createModalHost({ onRequestClose }) {
       );
     }
 
-    const shareText = buildShareText(state);
-    const pre = el("pre", { class: "share", text: shareText });
-    const actions = el("div", { class: "modal-actions" }, [
-      el("button", { class: "btn", type: "button", onclick: () => onShowQr(shareText) }, ["Mostrar QR Code"]),
-      el("button", { class: "btn btn--ghost", type: "button", onclick: () => onCopy && onCopy(shareText) }, ["Copiar texto"]),
-    ]);
-
-    body.append(
-      el("p", { class: "p" }, [`Modo: ${cfg.title}.`]),
-      secrets,
-      el("div", { class: "spacer" }),
-      actions,
-      el("div", { class: "spacer" }),
-      pre
-    );
+    body.append(el("p", { class: "p" }, [`Modo: ${cfg.title}.`]), secrets);
     show(overlay);
     focusFirst();
   }
 
-  function renderQr({ text, onCloseQr }) {
-    const { overlay, body } = modalShell({ title: "QR Code", onClose: onCloseQr || close });
-
-    body.append(el("p", { class: "p" }, ["Escaneie o QR Code no celular para copiar o resultado."]));
-
-    try {
-      const canvas = makeQrCanvas(text, { size: 560, margin: 16 });
-      canvas.className = "qr";
-      body.append(canvas);
-    } catch (e) {
-      body.append(el("p", { class: "p" }, [`Falha ao gerar QR: ${(e && e.message) || e}`]));
-    }
-
-    show(overlay);
-    focusFirst();
-  }
 
   function renderConfirm({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel }) {
     const { overlay, body } = modalShell({ title, onClose: onCancel || close });
@@ -756,7 +760,7 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
-  function renderMultiplayerResult({ mode, outcome, players }) {
+  function renderMultiplayerResult({ mode, outcome, players, onViewPlayer }) {
     const cfg = modeConfig(mode);
     const { overlay, body } = modalShell({ title: `Resultado - ${cfg.title}`, onClose: close });
     body.append(el("p", { class: "p" }, [outcome || "Resultado do multijogador."]));
@@ -764,11 +768,24 @@ export function createModalHost({ onRequestClose }) {
     const list = el("div", { class: "multi-result-list" });
     (players || []).forEach((player) => {
       const statusLabel = player.status === "won" ? "Venceu" : "Perdeu";
+      const secretsText = Array.isArray(player.secrets) ? player.secrets.join(", ") : "-";
       list.append(
-        el("div", { class: "multi-result-row" }, [
-          el("div", { class: "multi-result-name", text: player.name }),
-          el("div", { class: "multi-result-status", text: statusLabel }),
-          el("div", { class: "multi-result-attempts", text: player.attemptsLabel || "-" }),
+        el("div", { class: "multi-result-item" }, [
+          el("div", { class: "multi-result-row" }, [
+            el("div", { class: "multi-result-name", text: player.name }),
+            el("div", { class: "multi-result-status", text: statusLabel }),
+            el("div", { class: "multi-result-attempts", text: player.attemptsLabel || "-" }),
+            el(
+              "button",
+              {
+                class: "btn btn--ghost multi-result-view",
+                type: "button",
+                onclick: () => onViewPlayer && onViewPlayer(player.id),
+              },
+              ["Tela cheia"]
+            ),
+          ]),
+          el("div", { class: "multi-result-secrets", text: `Respostas: ${secretsText}` }),
         ])
       );
     });
@@ -785,7 +802,6 @@ export function createModalHost({ onRequestClose }) {
     renderStats,
     renderSettings,
     renderResult,
-    renderQr,
     renderProfileSelect,
     renderMultiplayerSelect,
     renderMultiplayerResult,
