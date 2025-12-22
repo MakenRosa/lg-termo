@@ -2,7 +2,7 @@
 import { evaluateGuess, isSolved, bestLetterState } from "./evaluateGuess.js";
 import { modeConfig } from "./modes.js";
 
-export function createNewGame({ mode, dayId, secretsOriginal, seed = 0 }) {
+export function createNewGame({ mode, dayId, secretsOriginal, seed = 0, variant = "single" }) {
   const cfg = modeConfig(mode);
   if (!Array.isArray(secretsOriginal) || secretsOriginal.length !== cfg.boards) {
     throw new Error(`Expected ${cfg.boards} secrets for mode ${mode}`);
@@ -21,6 +21,7 @@ export function createNewGame({ mode, dayId, secretsOriginal, seed = 0 }) {
     version: 1,
     mode,
     seed,
+    variant,
     dayId,
     maxAttempts: cfg.maxAttempts,
     boards: cfg.boards,

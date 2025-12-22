@@ -215,9 +215,9 @@ export function createModalHost({ onRequestClose }) {
     const { overlay, body } = modalShell({ title: `Configura\u00E7\u00F5es`, onClose: close });
     const now = new Date();
     const todayParts = {
-      y: String(now.getUTCFullYear()),
-      m: String(now.getUTCMonth() + 1).padStart(2, "0"),
-      d: String(now.getUTCDate()).padStart(2, "0"),
+      y: String(now.getFullYear()),
+      m: String(now.getMonth() + 1).padStart(2, "0"),
+      d: String(now.getDate()).padStart(2, "0"),
     };
     const fixed = String(settings.fixedDate || "");
     const fixedMatch = fixed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -393,11 +393,11 @@ export function createModalHost({ onRequestClose }) {
       const mm = Number(m);
       const dd = Number(d);
       if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return;
-      const cand = new Date(Date.UTC(yy, mm - 1, dd));
+      const cand = new Date(yy, mm - 1, dd);
       if (Number.isNaN(cand.getTime())) return;
-      if (cand.getUTCFullYear() !== yy || cand.getUTCMonth() !== mm - 1 || cand.getUTCDate() !== dd) return;
-      const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      if (cand.getTime() > todayUtc.getTime()) {
+      if (cand.getFullYear() !== yy || cand.getMonth() !== mm - 1 || cand.getDate() !== dd) return;
+      const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (cand.getTime() > todayLocal.getTime()) {
         dateParts.y = todayParts.y;
         dateParts.m = todayParts.m;
         dateParts.d = todayParts.d;
@@ -574,7 +574,7 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
-  function renderProfileSelect({ profiles, currentProfileId, maxProfiles, onSelect, onAddProfile }) {
+  function renderProfileSelect({ profiles, currentProfileId, maxProfiles, onSelect, onAddProfile, onSelectMultiplayer }) {
     const { overlay, body } = modalShell({ title: "Selecionar perfil", onClose: close });
     body.append(el("p", { class: "p" }, ["Escolha um perfil para continuar."]));
 
@@ -630,6 +630,18 @@ export function createModalHost({ onRequestClose }) {
       );
       list.append(btn);
     });
+    if (onSelectMultiplayer) {
+      const multiCard = el(
+        "button",
+        {
+          class: "profile-card profile-card--multi",
+          type: "button",
+          onclick: () => onSelectMultiplayer(),
+        },
+        [el("div", { class: "profile-avatar", text: "2-4" }), el("div", { class: "profile-card-name", text: "Multijogador" })]
+      );
+      list.append(multiCard);
+    }
     const addWrap = el("div", { class: "profile-add" });
     const addCard = el("button", { class: "profile-card profile-card--add", type: "button" }, [
       el("div", { class: "profile-avatar", text: "+" }),
@@ -688,6 +700,83 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
+  function renderMultiplayerSelect({ profiles, minPlayers = 2, maxPlayers = 4, onStart, onCancel }) {
+    const { overlay, body } = modalShell({ title: "Multijogador", onClose: onCancel || close });
+    body.append(el("p", { class: "p" }, [`Selecione de ${minPlayers} a ${maxPlayers} perfis.`]));
+
+    const selected = new Set();
+    const list = el("div", { class: "profile-grid" });
+    const cards = new Map();
+
+    (profiles || []).forEach((profile) => {
+      const name = String(profile.name || "").trim();
+      const initial = name ? name[0].toUpperCase() : "?";
+      const btn = el(
+        "button",
+        {
+          class: "profile-card profile-card--selectable",
+          type: "button",
+        },
+        [el("div", { class: "profile-avatar", text: initial }), el("div", { class: "profile-card-name", text: name })]
+      );
+      btn.onclick = () => {
+        if (selected.has(profile.id)) selected.delete(profile.id);
+        else if (selected.size < maxPlayers) selected.add(profile.id);
+        update();
+      };
+      cards.set(profile.id, btn);
+      list.append(btn);
+    });
+
+    const status = el("div", { class: "multi-select-status", text: "" });
+    const startBtn = el("button", { class: "btn", type: "button", disabled: true }, ["Iniciar"]);
+    const cancelBtn = el(
+      "button",
+      { class: "btn btn--ghost", type: "button", onclick: () => (onCancel ? onCancel() : close()) },
+      ["Cancelar"]
+    );
+    startBtn.onclick = () => {
+      if (selected.size < minPlayers) return;
+      const ordered = (profiles || []).map((p) => p.id).filter((id) => selected.has(id));
+      onStart && onStart(ordered);
+    };
+
+    function update() {
+      for (const [id, btn] of cards.entries()) {
+        btn.classList.toggle("profile-card--selected", selected.has(id));
+      }
+      status.textContent = `Selecionados: ${selected.size}/${maxPlayers}`;
+      startBtn.disabled = selected.size < minPlayers;
+    }
+
+    update();
+
+    body.append(list, status, el("div", { class: "modal-actions" }, [startBtn, cancelBtn]));
+    show(overlay);
+    focusFirst();
+  }
+
+  function renderMultiplayerResult({ mode, outcome, players }) {
+    const cfg = modeConfig(mode);
+    const { overlay, body } = modalShell({ title: `Resultado - ${cfg.title}`, onClose: close });
+    body.append(el("p", { class: "p" }, [outcome || "Resultado do multijogador."]));
+
+    const list = el("div", { class: "multi-result-list" });
+    (players || []).forEach((player) => {
+      const statusLabel = player.status === "won" ? "Venceu" : "Perdeu";
+      list.append(
+        el("div", { class: "multi-result-row" }, [
+          el("div", { class: "multi-result-name", text: player.name }),
+          el("div", { class: "multi-result-status", text: statusLabel }),
+          el("div", { class: "multi-result-attempts", text: player.attemptsLabel || "-" }),
+        ])
+      );
+    });
+    body.append(list);
+    show(overlay);
+    focusFirst();
+  }
+
   return {
     root,
     close,
@@ -698,6 +787,8 @@ export function createModalHost({ onRequestClose }) {
     renderResult,
     renderQr,
     renderProfileSelect,
+    renderMultiplayerSelect,
+    renderMultiplayerResult,
     renderConfirm,
   };
 }

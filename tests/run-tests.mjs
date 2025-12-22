@@ -64,7 +64,7 @@ test("Quarteto: one attempt applies to all boards", () => {
 });
 
 test("dayIdFromLocalDate: 1970-01-01 => 0", () => {
-  const d = new Date(Date.UTC(1970, 0, 1));
+  const d = new Date(1970, 0, 1);
   assert.equal(dayIdFromLocalDate(d), 0);
 });
 

@@ -69,6 +69,7 @@ export function createAppUI({
 
   const main = el("main", { class: "main" });
   const boards = createBoards();
+  const playerStatus = el("div", { class: "player-status" });
   const message = el("div", { class: "message", role: "status", "aria-live": "polite" });
 
   let lastRevealRowIndex = null;
@@ -78,7 +79,7 @@ export function createAppUI({
 
   const modalHost = createModalHost({ onRequestClose: onModalRequestClose });
 
-  main.append(boards.root, message, keyboard.root);
+  main.append(boards.root, playerStatus, message, keyboard.root);
   app.append(topbar, main, modalHost.root);
   root.append(app);
 
@@ -244,7 +245,7 @@ export function createAppUI({
     app.dataset.colorblind = enabled ? "1" : "0";
   }
 
-  function render(state, { settings }) {
+  function render(state, { settings, player }) {
     app.dataset.mode = state.mode;
     const selected =
       state.mode === Modes.termo ? 0 : state.mode === Modes.dueto ? 1 : state.mode === Modes.quarteto ? 2 : 0;
@@ -252,6 +253,16 @@ export function createAppUI({
 
     message.textContent = state.lastMessage || "";
     setColorblind(!!settings.colorblind);
+
+    if (player) {
+      playerStatus.textContent = `Jogador: ${player.name} (${player.index}/${player.total})`;
+      playerStatus.style.display = "block";
+      app.dataset.multiplayer = "1";
+    } else {
+      playerStatus.textContent = "";
+      playerStatus.style.display = "none";
+      app.dataset.multiplayer = "0";
+    }
 
     boards.render(state, { revealRowIndex: lastRevealRowIndex });
     keyboard.render(state.keyboard);

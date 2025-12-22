@@ -9,10 +9,15 @@ import { createAppUI } from "./ui/appUI.js";
 
 const SETTINGS_KEY = "lgtermo_settings";
 const STATS_KEY = "lgtermo_stats";
-const SETTINGS_VERSION = 2;
-const STATS_VERSION = 2;
+const SETTINGS_VERSION = 3;
+const STATS_VERSION = 3;
 const DEFAULT_PROFILE_ID = "tv";
 const MAX_PROFILES = 6;
+const MULTI_MIN_PLAYERS = 2;
+const MULTI_MAX_PLAYERS = 4;
+const MULTI_SEED_OFFSET = 1000;
+const SINGLE_VARIANT = "single";
+const MULTI_VARIANT = "multi";
 
 function defaultProfileSettings() {
   return {
@@ -20,6 +25,10 @@ function defaultProfileSettings() {
     colorblind: false,
     fixedDate: null,
   };
+}
+
+function defaultMultiSettings() {
+  return defaultProfileSettings();
 }
 
 function defaultSettingsStore() {
@@ -30,6 +39,7 @@ function defaultSettingsStore() {
     profileSettings: {
       [DEFAULT_PROFILE_ID]: defaultProfileSettings(),
     },
+    multiSettings: defaultMultiSettings(),
   };
 }
 
@@ -66,13 +76,14 @@ function parseFixedDate(value) {
   const y = Number(m[1]);
   const mo = Number(m[2]) - 1;
   const d = Number(m[3]);
-  const dt = new Date(Date.UTC(y, mo, d));
+  const dt = new Date(y, mo, d);
   if (Number.isNaN(dt.getTime())) return null;
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
   return dt;
 }
 
-function utcMidnight(date) {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+function localMidnight(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 function buildDailySecretsByMode({ pool, dayId, seed }) {
@@ -102,17 +113,26 @@ async function main() {
         colorblind: !!settingsStore.colorblind,
         fixedDate: settingsStore.fixedDate || null,
       };
+    } else if (settingsStore && settingsStore.version === 2) {
+      next.currentProfileId = settingsStore.currentProfileId || next.currentProfileId;
+      next.profiles = Array.isArray(settingsStore.profiles) && settingsStore.profiles.length
+        ? settingsStore.profiles
+        : next.profiles;
+      next.profileSettings = settingsStore.profileSettings || next.profileSettings;
     }
     settingsStore = next;
   }
   if (!settingsStore.profileSettings) settingsStore.profileSettings = {};
   if (!Array.isArray(settingsStore.profiles)) settingsStore.profiles = [];
+  if (!settingsStore.multiSettings) settingsStore.multiSettings = defaultMultiSettings();
 
   let statsStore = loadJSON(STATS_KEY, null);
   if (!statsStore || statsStore.version !== STATS_VERSION) {
     const next = defaultStatsStore();
     if (statsStore && statsStore.version === 1) {
       next.profiles[DEFAULT_PROFILE_ID] = statsStore;
+    } else if (statsStore && statsStore.version === 2) {
+      next.profiles = statsStore.profiles || next.profiles;
     }
     statsStore = next;
   }
@@ -125,11 +145,23 @@ async function main() {
     return settingsStore.profileSettings[profileId];
   }
 
+  function ensureMultiSettings() {
+    if (!settingsStore.multiSettings) settingsStore.multiSettings = defaultMultiSettings();
+    return settingsStore.multiSettings;
+  }
+
   function ensureProfileStats(profileId) {
     if (!statsStore.profiles[profileId]) {
       statsStore.profiles[profileId] = createEmptyStats();
     }
-    return statsStore.profiles[profileId];
+    const profileStats = statsStore.profiles[profileId];
+    const defaults = createEmptyStats();
+    [Modes.termo, Modes.dueto, Modes.quarteto].forEach((mode) => {
+      if (!profileStats[mode]) profileStats[mode] = defaults[mode];
+      if (!profileStats[mode].resultsByGameKey) profileStats[mode].resultsByGameKey = {};
+      if (!profileStats[mode].resultsByDayId) profileStats[mode].resultsByDayId = {};
+    });
+    return profileStats;
   }
 
   function saveSettingsStore() {
@@ -164,10 +196,16 @@ async function main() {
 
   let currentProfileId = settingsStore.currentProfileId;
   let settings = ensureProfileSettings(currentProfileId);
+  let multiSettings = ensureMultiSettings();
   let stats = ensureProfileStats(currentProfileId);
   if (settings.fixedDate) {
     settings.fixedDate = null;
     settingsStore.profileSettings[currentProfileId] = settings;
+    saveSettingsStore();
+  }
+  if (multiSettings.fixedDate) {
+    multiSettings.fixedDate = null;
+    settingsStore.multiSettings = multiSettings;
     saveSettingsStore();
   }
 
@@ -179,52 +217,91 @@ async function main() {
     return;
   }
 
-  function currentDayId() {
+  function currentDayIdFor(settingsRef) {
     const today = new Date();
-    const fixed = parseFixedDate(settings.fixedDate);
-    if (fixed && utcMidnight(fixed) <= utcMidnight(today)) {
+    const fixed = parseFixedDate(settingsRef.fixedDate);
+    if (fixed && localMidnight(fixed) <= localMidnight(today)) {
       return dayIdFromLocalDate(fixed);
     }
     return dayIdFromLocalDate(today);
   }
 
-  function newStateForCurrentSettings() {
-    const dayId = currentDayId();
-    const seed = profileSeedFor(currentProfileId);
-    const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, dayId, seed });
-    const secretsOriginal = secretsByMode[settings.mode] || secretsByMode[Modes.termo];
-    return createNewGame({ mode: settings.mode, dayId, secretsOriginal, seed });
+  function hasOverlapIndices(indicesByMode, avoidSet) {
+    const all = indicesByMode.termo.concat(indicesByMode.dueto, indicesByMode.quarteto);
+    return all.some((idx) => avoidSet.has(idx));
   }
 
-  function loadOrCreateState() {
-    const base = newStateForCurrentSettings();
+  function multiplayerSeedFor(profileId, dayId) {
+    const baseSeed = profileSeedFor(profileId) + MULTI_SEED_OFFSET;
+    const singleSeed = profileSeedFor(profileId);
+    const length = lists.pool.length;
+    const singleIdx = pickDailyModeIndices({ dayId, seed: singleSeed, length });
+    const avoid = new Set(singleIdx.termo.concat(singleIdx.dueto, singleIdx.quarteto));
+    let seed = baseSeed;
+    for (let i = 0; i < 50; i += 1) {
+      const multiIdx = pickDailyModeIndices({ dayId, seed, length });
+      if (!hasOverlapIndices(multiIdx, avoid)) return seed;
+      seed += 1;
+    }
+    return baseSeed;
+  }
+
+  function newStateForProfile({ profileId, settingsRef, variant }) {
+    const dayId = currentDayIdFor(settingsRef);
+    const seed = variant === MULTI_VARIANT ? multiplayerSeedFor(profileId, dayId) : profileSeedFor(profileId);
+    const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, dayId, seed });
+    const secretsOriginal = secretsByMode[settingsRef.mode] || secretsByMode[Modes.termo];
+    return createNewGame({ mode: settingsRef.mode, dayId, secretsOriginal, seed, variant });
+  }
+
+  function loadOrCreateStateForProfile({ profileId, settingsRef, variant }) {
+    const base = newStateForProfile({ profileId, settingsRef, variant });
     let saved = loadJSON(
-      progressKey({ profileId: currentProfileId, mode: base.mode, dayId: base.dayId, seed: base.seed }),
+      progressKey({ profileId, mode: base.mode, dayId: base.dayId, seed: base.seed }),
       null
     );
-    if (!saved && currentProfileId === DEFAULT_PROFILE_ID) {
+    if (!saved && variant === SINGLE_VARIANT && profileId === DEFAULT_PROFILE_ID) {
       saved = loadJSON(legacyProgressKey({ mode: base.mode, dayId: base.dayId, seed: base.seed }), null);
     }
     return hydrateGame({ saved, baseState: base });
   }
 
-  let state = loadOrCreateState();
+  let multiplayer = null;
+  let turnLock = false;
+  let turnTimer = null;
+  let state = loadOrCreateStateForProfile({
+    profileId: currentProfileId,
+    settingsRef: settings,
+    variant: SINGLE_VARIANT,
+  });
   let lastStatus = state.status;
   let lastRealDayId = dayIdFromLocalDate(new Date());
 
   const ui = createAppUI({
     root,
     onModeChange: (mode) => {
-      settings = { ...settings, mode };
-      settingsStore.profileSettings[currentProfileId] = settings;
-      saveSettingsStore();
-      state = loadOrCreateState();
-      lastStatus = state.status;
-      ui.render(state, { settings });
-      ui.initialFocus();
-      persist();
+      if (multiplayer) {
+        multiSettings = { ...multiSettings, mode };
+        settingsStore.multiSettings = multiSettings;
+        saveSettingsStore();
+        rebuildMultiplayerStates();
+        renderActiveState();
+        if (allMultiplayerFinished()) showMultiplayerResult();
+      } else {
+        settings = { ...settings, mode };
+        settingsStore.profileSettings[currentProfileId] = settings;
+        saveSettingsStore();
+        state = loadOrCreateStateForProfile({
+          profileId: currentProfileId,
+          settingsRef: settings,
+          variant: SINGLE_VARIANT,
+        });
+        lastStatus = state.status;
+        renderActiveState();
+        persistActiveState();
 
-      if (state.status !== "playing") showResultModal();
+        if (state.status !== "playing") showResultModal();
+      }
     },
     onTopAction: (action) => {
       if (action === "help") ui.modal.renderHelp();
@@ -232,21 +309,24 @@ async function main() {
         ui.modal.renderStats({
           statsStore,
           profiles: settingsStore.profiles,
-          currentProfileId,
+          currentProfileId: activeProfileId(),
           mode: state.mode,
         });
       else if (action === "settings") openSettingsModal();
       else if (action === "exit") exitApp();
     },
     onKeyboardAction: (action) => {
+      if (turnLock) return;
       if (action.type === "letter") {
         state = addLetter(state, action.letter);
-        ui.render(state, { settings });
-        persist();
+        updateActiveState(state);
+        renderActiveState();
+        persistActiveState();
       } else if (action.type === "back") {
         state = removeLetter(state);
-        ui.render(state, { settings });
-        persist();
+        updateActiveState(state);
+        renderActiveState();
+        persistActiveState();
       } else if (action.type === "enter") {
         doSubmit();
       }
@@ -255,42 +335,227 @@ async function main() {
     onBackFromPhysical: () => {
       if (ui.modal.isOpen()) ui.modal.close();
       else {
+        if (turnLock) return;
         state = removeLetter(state);
-        ui.render(state, { settings });
-        persist();
+        updateActiveState(state);
+        renderActiveState();
+        persistActiveState();
       }
     },
     onLetterFromPhysical: (letter) => {
+      if (turnLock) return;
       state = addLetter(state, letter);
-      ui.render(state, { settings });
-      persist();
+      updateActiveState(state);
+      renderActiveState();
+      persistActiveState();
     },
     onModalRequestClose: () => ui.initialFocus(),
   });
 
+  function activeMode() {
+    return multiplayer ? multiSettings.mode : settings.mode;
+  }
+
+  function currentIndexForMode(mode) {
+    if (!multiplayer) return 0;
+    if (!multiplayer.currentIndexByMode) multiplayer.currentIndexByMode = {};
+    const idx = multiplayer.currentIndexByMode[mode];
+    if (Number.isInteger(idx)) return idx;
+    multiplayer.currentIndexByMode[mode] = 0;
+    return 0;
+  }
+
+  function setIndexForMode(mode, idx) {
+    if (!multiplayer) return;
+    if (!multiplayer.currentIndexByMode) multiplayer.currentIndexByMode = {};
+    multiplayer.currentIndexByMode[mode] = idx;
+  }
+
+  function activeProfileId(modeOverride) {
+    if (multiplayer && multiplayer.profileIds.length > 0) {
+      const mode = modeOverride || activeMode();
+      const idx = currentIndexForMode(mode);
+      return multiplayer.profileIds[idx] || multiplayer.profileIds[0];
+    }
+    return currentProfileId;
+  }
+
+  function activeSettingsRef() {
+    return multiplayer ? multiSettings : settings;
+  }
+
+  function activePlayerInfo() {
+    if (!multiplayer) return null;
+    const mode = activeMode();
+    const profileId = activeProfileId(mode);
+    const profile = settingsStore.profiles.find((p) => p.id === profileId);
+    return {
+      name: profile ? profile.name : "Perfil",
+      index: currentIndexForMode(mode) + 1,
+      total: multiplayer.profileIds.length,
+    };
+  }
+
+  function updateActiveState(nextState) {
+    if (multiplayer) {
+      const profileId = activeProfileId();
+      multiplayer.states[profileId] = nextState;
+    }
+    state = nextState;
+  }
+
+  function persistState(profileId, nextState) {
+    saveJSON(
+      progressKey({ profileId, mode: nextState.mode, dayId: nextState.dayId, seed: nextState.seed }),
+      serializeGame(nextState)
+    );
+  }
+
+  function persistActiveState() {
+    const profileId = activeProfileId();
+    persistState(profileId, state);
+  }
+
+  function renderActiveState({ focus = true } = {}) {
+    ui.render(state, { settings: activeSettingsRef(), player: activePlayerInfo() });
+    if (focus && !ui.modal.isOpen()) ui.initialFocus();
+  }
+
+  function findNextPlayableIndex(startIndex, { includeCurrent = false } = {}) {
+    const ids = multiplayer ? multiplayer.profileIds : [];
+    if (ids.length === 0) return null;
+    const total = ids.length;
+    const startOffset = includeCurrent ? 0 : 1;
+    for (let offset = startOffset; offset < total + startOffset; offset += 1) {
+      const idx = (startIndex + offset) % total;
+      const st = multiplayer.states[ids[idx]];
+      if (st && st.status === "playing") return idx;
+    }
+    return null;
+  }
+
+  function allMultiplayerFinished() {
+    if (!multiplayer) return false;
+    return multiplayer.profileIds.every((id) => {
+      const st = multiplayer.states[id];
+      return st && st.status !== "playing";
+    });
+  }
+
+  function syncStatsForState(profileId, playerState) {
+    if (playerState.status !== "won" && playerState.status !== "lost") return;
+    const profileStats = ensureProfileStats(profileId);
+    const updated = recordFinishedGame(profileStats, playerState);
+    statsStore.profiles[profileId] = updated;
+    saveStatsStore();
+    if (profileId === currentProfileId) stats = updated;
+  }
+
+  function rebuildMultiplayerStates() {
+    if (!multiplayer) return;
+    multiplayer.resultShown = false;
+    const states = {};
+    multiplayer.profileIds.forEach((profileId) => {
+      states[profileId] = loadOrCreateStateForProfile({
+        profileId,
+        settingsRef: multiSettings,
+        variant: MULTI_VARIANT,
+      });
+      syncStatsForState(profileId, states[profileId]);
+    });
+    multiplayer.states = states;
+    const mode = activeMode();
+    const startIndex = currentIndexForMode(mode);
+    const nextIndex = findNextPlayableIndex(startIndex, { includeCurrent: true });
+    setIndexForMode(mode, nextIndex == null ? 0 : nextIndex);
+    state = multiplayer.states[activeProfileId(mode)];
+    turnLock = false;
+    if (turnTimer) {
+      clearTimeout(turnTimer);
+      turnTimer = null;
+    }
+  }
+
+  function stopMultiplayer() {
+    multiplayer = null;
+    turnLock = false;
+    if (turnTimer) {
+      clearTimeout(turnTimer);
+      turnTimer = null;
+    }
+  }
+
+  function advanceMultiplayerTurn() {
+    if (!multiplayer) return;
+    if (allMultiplayerFinished()) {
+      showMultiplayerResult();
+      return;
+    }
+    const mode = activeMode();
+    const startIndex = currentIndexForMode(mode);
+    const nextIndex = findNextPlayableIndex(startIndex);
+    if (nextIndex == null) {
+      renderActiveState();
+      return;
+    }
+    setIndexForMode(mode, nextIndex);
+    state = multiplayer.states[activeProfileId(mode)];
+    renderActiveState();
+    persistActiveState();
+  }
+
+  function scheduleAdvanceTurn() {
+    if (!multiplayer) return;
+    const delay = 1200;
+    turnLock = true;
+    if (turnTimer) clearTimeout(turnTimer);
+    turnTimer = setTimeout(() => {
+      turnLock = false;
+      advanceMultiplayerTurn();
+    }, delay);
+  }
+
   function setCurrentProfile(profileId) {
+    stopMultiplayer();
     currentProfileId = profileId;
     settingsStore.currentProfileId = profileId;
     settings = ensureProfileSettings(profileId);
     stats = ensureProfileStats(profileId);
     saveSettingsStore();
     saveStatsStore();
-    state = loadOrCreateState();
+    state = loadOrCreateStateForProfile({
+      profileId: currentProfileId,
+      settingsRef: settings,
+      variant: SINGLE_VARIANT,
+    });
     lastStatus = state.status;
-    ui.render(state, { settings });
-    ui.initialFocus();
-    persist();
+    renderActiveState();
+    persistActiveState();
     if (state.status !== "playing") showResultModal();
   }
 
   function openProfileSelect() {
     ui.modal.renderProfileSelect({
       profiles: settingsStore.profiles,
-      currentProfileId,
+      currentProfileId: activeProfileId(),
       maxProfiles: MAX_PROFILES,
       onSelect: (profileId) => {
         ui.modal.close();
         setCurrentProfile(profileId);
+      },
+      onSelectMultiplayer: () => {
+        if (settingsStore.profiles.length < MULTI_MIN_PLAYERS) {
+          ui.modal.renderConfirm({
+            title: "Multijogador",
+            message: "Crie pelo menos 2 perfis para jogar no multijogador.",
+            confirmLabel: "Ok",
+            cancelLabel: "Fechar",
+            onConfirm: () => openProfileSelect(),
+            onCancel: () => openProfileSelect(),
+          });
+          return;
+        }
+        openMultiplayerSelect();
       },
       onAddProfile: (name) => {
         const trimmed = sanitizeProfileName(name);
@@ -307,25 +572,75 @@ async function main() {
     });
   }
 
-  function openSettingsModal() {
-    ui.modal.renderSettings({
-      settings,
+  function openMultiplayerSelect() {
+    ui.modal.renderMultiplayerSelect({
       profiles: settingsStore.profiles,
-      currentProfileId,
+      minPlayers: MULTI_MIN_PLAYERS,
+      maxPlayers: MULTI_MAX_PLAYERS,
+      onStart: (profileIds) => {
+        ui.modal.close();
+        startMultiplayer(profileIds);
+      },
+      onCancel: () => openProfileSelect(),
+    });
+  }
+
+  function startMultiplayer(profileIds) {
+    stopMultiplayer();
+    const available = new Set(settingsStore.profiles.map((p) => p.id));
+    const selected = Array.from(new Set(profileIds)).filter((id) => available.has(id));
+    if (selected.length < MULTI_MIN_PLAYERS) return;
+    multiplayer = {
+      profileIds: selected.slice(0, MULTI_MAX_PLAYERS),
+      currentIndexByMode: {
+        [Modes.termo]: 0,
+        [Modes.dueto]: 0,
+        [Modes.quarteto]: 0,
+      },
+      states: {},
+      resultShown: false,
+    };
+    rebuildMultiplayerStates();
+    renderActiveState();
+    persistActiveState();
+    if (allMultiplayerFinished()) showMultiplayerResult();
+  }
+
+  function openSettingsModal() {
+    const settingsRef = activeSettingsRef();
+    const activeId = activeProfileId();
+    ui.modal.renderSettings({
+      settings: settingsRef,
+      profiles: settingsStore.profiles,
+      currentProfileId: activeId,
       maxProfiles: MAX_PROFILES,
       defaultProfileId: DEFAULT_PROFILE_ID,
       onUpdateSettings: (patch) => {
-        settings = { ...settings, ...patch };
-        settingsStore.profileSettings[currentProfileId] = settings;
-        saveSettingsStore();
+        if (multiplayer) {
+          multiSettings = { ...multiSettings, ...patch };
+          settingsStore.multiSettings = multiSettings;
+          saveSettingsStore();
+          rebuildMultiplayerStates();
+          renderActiveState();
+          persistActiveState();
+          if (allMultiplayerFinished()) showMultiplayerResult();
+        } else {
+          settings = { ...settings, ...patch };
+          settingsStore.profileSettings[currentProfileId] = settings;
+          saveSettingsStore();
 
-        // Rebuild state when date changes, because the daily selection changes.
-        state = loadOrCreateState();
-        lastStatus = state.status;
-        ui.render(state, { settings });
-        persist();
+          // Rebuild state when date changes, because the daily selection changes.
+          state = loadOrCreateStateForProfile({
+            profileId: currentProfileId,
+            settingsRef: settings,
+            variant: SINGLE_VARIANT,
+          });
+          lastStatus = state.status;
+          renderActiveState();
+          persistActiveState();
 
-        if (state.status !== "playing") showResultModal();
+          if (state.status !== "playing") showResultModal();
+        }
       },
       onResetToday: () => {
         ui.modal.renderConfirm({
@@ -334,16 +649,26 @@ async function main() {
           confirmLabel: "Apagar",
           cancelLabel: "Cancelar",
           onConfirm: () => {
-            const dayId = currentDayId();
-            const seed = profileSeedFor(currentProfileId);
-            remove(progressKey({ profileId: currentProfileId, mode: settings.mode, dayId, seed }));
-            if (currentProfileId === DEFAULT_PROFILE_ID) {
-              remove(legacyProgressKey({ mode: settings.mode, dayId, seed }));
+            const profileId = activeProfileId();
+            remove(progressKey({ profileId, mode: state.mode, dayId: state.dayId, seed: state.seed }));
+            if (!multiplayer && profileId === DEFAULT_PROFILE_ID) {
+              remove(legacyProgressKey({ mode: state.mode, dayId: state.dayId, seed: state.seed }));
             }
-            state = loadOrCreateState();
-            lastStatus = state.status;
-            ui.render(state, { settings });
-            persist();
+            if (multiplayer) {
+              rebuildMultiplayerStates();
+              renderActiveState();
+              persistActiveState();
+              if (allMultiplayerFinished()) showMultiplayerResult();
+            } else {
+              state = loadOrCreateStateForProfile({
+                profileId: currentProfileId,
+                settingsRef: settings,
+                variant: SINGLE_VARIANT,
+              });
+              lastStatus = state.status;
+              renderActiveState();
+              persistActiveState();
+            }
             ui.modal.close();
           },
           onCancel: () => openSettingsModal(),
@@ -365,13 +690,19 @@ async function main() {
             statsStore = defaultStatsStore();
             currentProfileId = settingsStore.currentProfileId;
             settings = ensureProfileSettings(currentProfileId);
+            multiSettings = ensureMultiSettings();
             stats = ensureProfileStats(currentProfileId);
             saveSettingsStore();
             saveStatsStore();
-            state = loadOrCreateState();
+            stopMultiplayer();
+            state = loadOrCreateStateForProfile({
+              profileId: currentProfileId,
+              settingsRef: settings,
+              variant: SINGLE_VARIANT,
+            });
             lastStatus = state.status;
-            ui.render(state, { settings });
-            persist();
+            renderActiveState();
+            persistActiveState();
             ui.modal.close();
           },
           onCancel: () => openSettingsModal(),
@@ -400,19 +731,34 @@ async function main() {
             if (settingsStore.profiles.length <= 1) return;
             const idx = settingsStore.profiles.findIndex((p) => p.id === profileId);
             if (idx === -1) return;
+            const wasMultiplayer = !!multiplayer;
             settingsStore.profiles.splice(idx, 1);
             delete settingsStore.profileSettings[profileId];
             delete statsStore.profiles[profileId];
-            if (currentProfileId === profileId) {
+            if (wasMultiplayer) stopMultiplayer();
+            if (currentProfileId === profileId || !settingsStore.profileSettings[currentProfileId]) {
               const fallback = settingsStore.profiles[0].id;
               currentProfileId = fallback;
               settingsStore.currentProfileId = fallback;
               settings = ensureProfileSettings(fallback);
               stats = ensureProfileStats(fallback);
-              state = loadOrCreateState();
+              state = loadOrCreateStateForProfile({
+                profileId: currentProfileId,
+                settingsRef: settings,
+                variant: SINGLE_VARIANT,
+              });
               lastStatus = state.status;
-              ui.render(state, { settings });
-              persist();
+              renderActiveState();
+              persistActiveState();
+            } else if (wasMultiplayer) {
+              state = loadOrCreateStateForProfile({
+                profileId: currentProfileId,
+                settingsRef: settings,
+                variant: SINGLE_VARIANT,
+              });
+              lastStatus = state.status;
+              renderActiveState();
+              persistActiveState();
             }
             saveSettingsStore();
             saveStatsStore();
@@ -436,13 +782,6 @@ async function main() {
     window.close();
   }
 
-  function persist() {
-    saveJSON(
-      progressKey({ profileId: currentProfileId, mode: state.mode, dayId: state.dayId, seed: state.seed }),
-      serializeGame(state)
-    );
-  }
-
   function showResultModal() {
     const show = () =>
       ui.modal.renderResult({
@@ -452,11 +791,11 @@ async function main() {
           safeClipboardWrite(text)
             .then(() => {
               state = setMessage(state, "Texto copiado.");
-              ui.render(state, { settings });
+              renderActiveState();
             })
             .catch(() => {
               state = setMessage(state, "Nao foi possivel copiar.");
-              ui.render(state, { settings });
+              renderActiveState();
             });
         },
       });
@@ -464,30 +803,79 @@ async function main() {
     show();
   }
 
-  function doSubmit() {
-    const before = state;
-    state = submitGuess(state, { dictionarySet: lists.dictionarySet });
+  function attemptsUsedForState(playerState) {
+    if (playerState.status === "won") {
+      const solved = playerState.solvedAt.filter((v) => v != null);
+      return solved.length ? Math.max(...solved) : playerState.maxAttempts;
+    }
+    return playerState.maxAttempts;
+  }
 
-    if (state !== before && state.guesses.length > before.guesses.length) {
-      ui.setRevealRowIndex(state.guesses.length - 1);
+  function showMultiplayerResult() {
+    if (!multiplayer || multiplayer.resultShown) return;
+    const players = multiplayer.profileIds.map((profileId) => {
+      const profile = settingsStore.profiles.find((p) => p.id === profileId);
+      const playerState = multiplayer.states[profileId];
+      const attempts = attemptsUsedForState(playerState);
+      return {
+        id: profileId,
+        name: profile ? profile.name : "Perfil",
+        status: playerState.status,
+        attempts,
+        attemptsLabel: playerState.status === "won" ? `${attempts}/${playerState.maxAttempts}` : `X/${playerState.maxAttempts}`,
+      };
+    });
+    const winners = players.filter((p) => p.status === "won");
+    let outcome = "Empate";
+    if (winners.length > 0) {
+      const best = Math.min(...winners.map((p) => p.attempts));
+      const top = winners.filter((p) => p.attempts === best);
+      if (top.length === 1) {
+        outcome = `Vencedor: ${top[0].name}`;
+      } else {
+        outcome = `Empate: ${top.map((p) => p.name).join(", ")}`;
+      }
+    }
+    ui.modal.renderMultiplayerResult({
+      mode: state.mode,
+      outcome,
+      players,
+    });
+    multiplayer.resultShown = true;
+  }
+
+  function doSubmit() {
+    if (turnLock) return;
+    const before = state;
+    const next = submitGuess(state, { dictionarySet: lists.dictionarySet });
+    const guessApplied = next.guesses.length > before.guesses.length;
+
+    if (guessApplied) {
+      ui.setRevealRowIndex(next.guesses.length - 1);
     }
 
-    ui.render(state, { settings });
-    persist();
+    updateActiveState(next);
+    renderActiveState();
+    persistActiveState();
+
+    if (before.status === "playing" && (next.status === "won" || next.status === "lost")) {
+      syncStatsForState(activeProfileId(), next);
+    }
+
+    if (multiplayer) {
+      if (guessApplied) scheduleAdvanceTurn();
+      return;
+    }
 
     if (lastStatus === "playing" && (state.status === "won" || state.status === "lost")) {
-      stats = recordFinishedGame(stats, state);
-      statsStore.profiles[currentProfileId] = stats;
-      saveStatsStore();
       showResultModal();
     }
 
     lastStatus = state.status;
   }
 
-  ui.render(state, { settings });
-  ui.initialFocus();
-  persist();
+  renderActiveState();
+  persistActiveState();
   openProfileSelect();
 
   if (state.status !== "playing" && !ui.modal.isOpen()) showResultModal();
@@ -496,14 +884,28 @@ async function main() {
     const nowRealDayId = dayIdFromLocalDate(new Date());
     if (nowRealDayId === lastRealDayId) return;
     lastRealDayId = nowRealDayId;
-    settings.fixedDate = null;
-    settingsStore.profileSettings[currentProfileId] = settings;
-    saveSettingsStore();
-    state = loadOrCreateState();
-    lastStatus = state.status;
-    ui.render(state, { settings });
-    persist();
-    if (state.status !== "playing") showResultModal();
+    if (multiplayer) {
+      multiSettings.fixedDate = null;
+      settingsStore.multiSettings = multiSettings;
+      saveSettingsStore();
+      rebuildMultiplayerStates();
+      renderActiveState();
+      persistActiveState();
+      if (allMultiplayerFinished()) showMultiplayerResult();
+    } else {
+      settings.fixedDate = null;
+      settingsStore.profileSettings[currentProfileId] = settings;
+      saveSettingsStore();
+      state = loadOrCreateStateForProfile({
+        profileId: currentProfileId,
+        settingsRef: settings,
+        variant: SINGLE_VARIANT,
+      });
+      lastStatus = state.status;
+      renderActiveState();
+      persistActiveState();
+      if (state.status !== "playing") showResultModal();
+    }
   }, 60 * 1000);
 }
 

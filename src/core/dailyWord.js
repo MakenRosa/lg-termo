@@ -1,12 +1,12 @@
-const EPOCH_UTC_MS = Date.UTC(1970, 0, 1);
+const EPOCH_LOCAL_MS = new Date(1970, 0, 1).getTime();
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function dayIdFromLocalDate(date = new Date()) {
-  const y = date.getUTCFullYear();
-  const m = date.getUTCMonth();
-  const d = date.getUTCDate();
-  const utcMidnight = Date.UTC(y, m, d);
-  return Math.floor((utcMidnight - EPOCH_UTC_MS) / DAY_MS);
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  const localMidnight = new Date(y, m, d).getTime();
+  return Math.floor((localMidnight - EPOCH_LOCAL_MS) / DAY_MS);
 }
 
 export function mod(n, m) {
