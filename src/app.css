@@ -357,6 +357,179 @@ input:focus {
   border-color: rgba(0, 0, 0, 0.25);
 }
 
+/* Dueto mode: split keyboard keys */
+.kb-key--split {
+  --split-left: var(--panel);
+  --split-right: var(--panel);
+  border-color: rgba(0, 0, 0, 0.25);
+  background-clip: padding-box;
+  background-image: linear-gradient(to right,
+      var(--split-left) 0%,
+      var(--split-left) 50%,
+      var(--split-right) 50%,
+      var(--split-right) 100%);
+}
+
+/* CSS custom properties for split colors based on data attributes */
+.kb-key--split[data-left-state="correct"][data-right-state="correct"] {
+  --split-left: var(--correct-kb);
+  --split-right: var(--correct-kb);
+}
+
+.kb-key--split[data-left-state="correct"][data-right-state="present"] {
+  --split-left: var(--correct-kb);
+  --split-right: var(--present-kb);
+}
+
+.kb-key--split[data-left-state="correct"][data-right-state="absent"] {
+  --split-left: var(--correct-kb);
+  --split-right: var(--absent-kb);
+}
+
+.kb-key--split[data-left-state="correct"][data-right-state="unused"] {
+  --split-left: var(--correct-kb);
+  --split-right: var(--panel);
+}
+
+.kb-key--split[data-left-state="present"][data-right-state="correct"] {
+  --split-left: var(--present-kb);
+  --split-right: var(--correct-kb);
+}
+
+.kb-key--split[data-left-state="present"][data-right-state="present"] {
+  --split-left: var(--present-kb);
+  --split-right: var(--present-kb);
+}
+
+.kb-key--split[data-left-state="present"][data-right-state="absent"] {
+  --split-left: var(--present-kb);
+  --split-right: var(--absent-kb);
+}
+
+.kb-key--split[data-left-state="present"][data-right-state="unused"] {
+  --split-left: var(--present-kb);
+  --split-right: var(--panel);
+}
+
+.kb-key--split[data-left-state="absent"][data-right-state="correct"] {
+  --split-left: var(--absent-kb);
+  --split-right: var(--correct-kb);
+}
+
+.kb-key--split[data-left-state="absent"][data-right-state="present"] {
+  --split-left: var(--absent-kb);
+  --split-right: var(--present-kb);
+}
+
+.kb-key--split[data-left-state="absent"][data-right-state="absent"] {
+  --split-left: var(--absent-kb);
+  --split-right: var(--absent-kb);
+}
+
+.kb-key--split[data-left-state="absent"][data-right-state="unused"] {
+  --split-left: var(--absent-kb);
+  --split-right: var(--panel);
+}
+
+.kb-key--split[data-left-state="unused"][data-right-state="correct"] {
+  --split-left: var(--panel);
+  --split-right: var(--correct-kb);
+}
+
+.kb-key--split[data-left-state="unused"][data-right-state="present"] {
+  --split-left: var(--panel);
+  --split-right: var(--present-kb);
+}
+
+.kb-key--split[data-left-state="unused"][data-right-state="absent"] {
+  --split-left: var(--panel);
+  --split-right: var(--absent-kb);
+}
+
+/* Quarteto mode: quad keyboard keys (4 quadrants) */
+.kb-key--quad {
+  --quad-tl: var(--panel);
+  --quad-tr: var(--panel);
+  --quad-bl: var(--panel);
+  --quad-br: var(--panel);
+  border-color: rgba(0, 0, 0, 0.25);
+  background-clip: padding-box;
+  background-image:
+    linear-gradient(to right, var(--quad-tl) 0%, var(--quad-tl) 50%, var(--quad-tr) 50%, var(--quad-tr) 100%),
+    linear-gradient(to right, var(--quad-bl) 0%, var(--quad-bl) 50%, var(--quad-br) 50%, var(--quad-br) 100%);
+  background-size: 100% 50%;
+  background-position: 0 0, 0 100%;
+  background-repeat: no-repeat;
+}
+
+/* Quarteto: Top-Left (TL) states */
+.kb-key--quad[data-tl-state="correct"] {
+  --quad-tl: var(--correct-kb);
+}
+
+.kb-key--quad[data-tl-state="present"] {
+  --quad-tl: var(--present-kb);
+}
+
+.kb-key--quad[data-tl-state="absent"] {
+  --quad-tl: var(--absent-kb);
+}
+
+.kb-key--quad[data-tl-state="unused"] {
+  --quad-tl: var(--panel);
+}
+
+/* Quarteto: Top-Right (TR) states */
+.kb-key--quad[data-tr-state="correct"] {
+  --quad-tr: var(--correct-kb);
+}
+
+.kb-key--quad[data-tr-state="present"] {
+  --quad-tr: var(--present-kb);
+}
+
+.kb-key--quad[data-tr-state="absent"] {
+  --quad-tr: var(--absent-kb);
+}
+
+.kb-key--quad[data-tr-state="unused"] {
+  --quad-tr: var(--panel);
+}
+
+/* Quarteto: Bottom-Left (BL) states */
+.kb-key--quad[data-bl-state="correct"] {
+  --quad-bl: var(--correct-kb);
+}
+
+.kb-key--quad[data-bl-state="present"] {
+  --quad-bl: var(--present-kb);
+}
+
+.kb-key--quad[data-bl-state="absent"] {
+  --quad-bl: var(--absent-kb);
+}
+
+.kb-key--quad[data-bl-state="unused"] {
+  --quad-bl: var(--panel);
+}
+
+/* Quarteto: Bottom-Right (BR) states */
+.kb-key--quad[data-br-state="correct"] {
+  --quad-br: var(--correct-kb);
+}
+
+.kb-key--quad[data-br-state="present"] {
+  --quad-br: var(--present-kb);
+}
+
+.kb-key--quad[data-br-state="absent"] {
+  --quad-br: var(--absent-kb);
+}
+
+.kb-key--quad[data-br-state="unused"] {
+  --quad-br: var(--panel);
+}
+
 /* Modal */
 .modal-host[aria-hidden="true"] {
   display: none;

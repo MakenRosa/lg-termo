@@ -335,7 +335,7 @@ export function createAppUI({
     }
 
     boards.render(state, { revealRowIndex: lastRevealRowIndex });
-    keyboard.render(state.keyboard);
+    keyboard.render(state.keyboard, state.keyboardPerBoard);
     if (state.currentGuess && state.currentGuess.length >= 5) {
       const active = document.activeElement;
       if (active && active.dataset && active.dataset.role === "kb") {

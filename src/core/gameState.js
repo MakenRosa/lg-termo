@@ -32,6 +32,7 @@ export function createNewGame({ mode, dayId, secretsOriginal, seed = 0, variant 
     solvedAt: Array(cfg.boards).fill(null),
     status: "playing",
     keyboard: {},
+    keyboardPerBoard: Array.from({ length: cfg.boards }, () => ({})),
     lastMessage: "",
   };
 }
@@ -84,11 +85,13 @@ export function applyGuess(state, guess) {
   }
 
   const keyboard = { ...state.keyboard };
+  const keyboardPerBoard = state.keyboardPerBoard.map((kb) => ({ ...kb }));
   for (let b = 0; b < perBoard.length; b += 1) {
     const evalRow = perBoard[b];
     for (let i = 0; i < 5; i += 1) {
       const letter = g[i];
       keyboard[letter] = bestLetterState(keyboard[letter] || "absent", evalRow[i]);
+      keyboardPerBoard[b][letter] = bestLetterState(keyboardPerBoard[b][letter] || "absent", evalRow[i]);
     }
   }
 
@@ -106,6 +109,7 @@ export function applyGuess(state, guess) {
     evaluations,
     solvedAt,
     keyboard,
+    keyboardPerBoard,
     status,
   };
 }

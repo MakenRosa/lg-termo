@@ -57,17 +57,76 @@ export function createKeyboard({ onAction }) {
     root.append(row);
   }
 
-  function render(keyboardState = {}) {
+  function render(keyboardState = {}, keyboardPerBoard = null) {
+    const isDueto = Array.isArray(keyboardPerBoard) && keyboardPerBoard.length === 2;
+    const isQuarteto = Array.isArray(keyboardPerBoard) && keyboardPerBoard.length === 4;
+
     for (const btn of keyButtons) {
       const letter = btn.dataset.letter;
       if (!letter) {
-        btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct");
+        btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct", "kb-key--split", "kb-key--quad");
+        btn.removeAttribute("data-left-state");
+        btn.removeAttribute("data-right-state");
+        btn.removeAttribute("data-tl-state");
+        btn.removeAttribute("data-tr-state");
+        btn.removeAttribute("data-bl-state");
+        btn.removeAttribute("data-br-state");
         continue;
       }
-      const state = keyboardState[letter];
-      btn.classList.toggle("kb-key--absent", state === "absent");
-      btn.classList.toggle("kb-key--present", state === "present");
-      btn.classList.toggle("kb-key--correct", state === "correct");
+
+      if (isDueto) {
+        const leftState = keyboardPerBoard[0][letter] || null;
+        const rightState = keyboardPerBoard[1][letter] || null;
+
+        // If any side has been tested, show split mode
+        if (leftState || rightState) {
+          btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct", "kb-key--quad");
+          btn.classList.add("kb-key--split");
+          btn.dataset.leftState = leftState || "unused";
+          btn.dataset.rightState = rightState || "unused";
+        } else {
+          // Letter not tested yet - no special styling
+          btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct", "kb-key--split", "kb-key--quad");
+          btn.removeAttribute("data-left-state");
+          btn.removeAttribute("data-right-state");
+        }
+      } else if (isQuarteto) {
+        // Quarteto: 4 quadrants - TL (board 0), TR (board 1), BL (board 2), BR (board 3)
+        const tlState = keyboardPerBoard[0][letter] || null;
+        const trState = keyboardPerBoard[1][letter] || null;
+        const blState = keyboardPerBoard[2][letter] || null;
+        const brState = keyboardPerBoard[3][letter] || null;
+
+        // If any quadrant has been tested, show quad mode
+        if (tlState || trState || blState || brState) {
+          btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct", "kb-key--split");
+          btn.classList.add("kb-key--quad");
+          btn.dataset.tlState = tlState || "unused";
+          btn.dataset.trState = trState || "unused";
+          btn.dataset.blState = blState || "unused";
+          btn.dataset.brState = brState || "unused";
+        } else {
+          // Letter not tested yet - no special styling
+          btn.classList.remove("kb-key--absent", "kb-key--present", "kb-key--correct", "kb-key--split", "kb-key--quad");
+          btn.removeAttribute("data-tl-state");
+          btn.removeAttribute("data-tr-state");
+          btn.removeAttribute("data-bl-state");
+          btn.removeAttribute("data-br-state");
+        }
+      } else {
+        // Original behavior for termo
+        btn.classList.remove("kb-key--split", "kb-key--quad");
+        btn.removeAttribute("data-left-state");
+        btn.removeAttribute("data-right-state");
+        btn.removeAttribute("data-tl-state");
+        btn.removeAttribute("data-tr-state");
+        btn.removeAttribute("data-bl-state");
+        btn.removeAttribute("data-br-state");
+        const state = keyboardState[letter];
+        btn.classList.toggle("kb-key--absent", state === "absent");
+        btn.classList.toggle("kb-key--present", state === "present");
+        btn.classList.toggle("kb-key--correct", state === "correct");
+      }
     }
   }
 
