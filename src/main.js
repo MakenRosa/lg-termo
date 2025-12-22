@@ -16,6 +16,7 @@ const MAX_PROFILES = 6;
 const MULTI_MIN_PLAYERS = 2;
 const MULTI_MAX_PLAYERS = 4;
 const MULTI_SEED_OFFSET = 1000;
+const MULTI_GROUP_STRIDE = 97;
 const SINGLE_VARIANT = "single";
 const MULTI_VARIANT = "multi";
 
@@ -182,9 +183,23 @@ async function main() {
     keys.forEach((key) => remove(key));
   }
 
+  function profileSeedIndex(profileId) {
+    return settingsStore.profiles.findIndex((p) => p.id === profileId);
+  }
+
   function profileSeedFor(profileId) {
-    const idx = settingsStore.profiles.findIndex((p) => p.id === profileId);
+    const idx = profileSeedIndex(profileId);
     return idx >= 0 ? idx + 1 : 1;
+  }
+
+  function multiplayerGroupSeed(profileIds) {
+    if (!Array.isArray(profileIds)) return 0;
+    let mask = 0;
+    profileIds.forEach((id) => {
+      const idx = profileSeedIndex(id);
+      if (idx >= 0 && idx < 30) mask |= 1 << idx;
+    });
+    return mask >>> 0;
   }
 
   if (!Array.isArray(settingsStore.profiles) || settingsStore.profiles.length === 0) {
@@ -241,9 +256,10 @@ async function main() {
     return all.some((idx) => avoidSet.has(idx));
   }
 
-  function multiplayerSeedFor(profileId, dayId) {
-    const baseSeed = profileSeedFor(profileId) + MULTI_SEED_OFFSET;
-    const singleSeed = profileSeedFor(profileId);
+  function multiplayerSeedFor(profileId, dayId, groupSeed = 0) {
+    const profileSeed = profileSeedFor(profileId);
+    const baseSeed = profileSeed + MULTI_SEED_OFFSET + groupSeed * MULTI_GROUP_STRIDE;
+    const singleSeed = profileSeed;
     const length = lists.pool.length;
     const singleIdx = pickDailyModeIndices({ dayId, seed: singleSeed, length });
     const avoid = new Set(singleIdx.termo.concat(singleIdx.dueto, singleIdx.quarteto));
@@ -251,21 +267,22 @@ async function main() {
     for (let i = 0; i < 50; i += 1) {
       const multiIdx = pickDailyModeIndices({ dayId, seed, length });
       if (!hasOverlapIndices(multiIdx, avoid)) return seed;
-      seed += 1;
+      seed += MULTI_GROUP_STRIDE;
     }
     return baseSeed;
   }
 
-  function newStateForProfile({ profileId, settingsRef, variant }) {
+  function newStateForProfile({ profileId, settingsRef, variant, groupSeed = 0 }) {
     const dayId = currentDayIdFor(settingsRef);
-    const seed = variant === MULTI_VARIANT ? multiplayerSeedFor(profileId, dayId) : profileSeedFor(profileId);
+    const seed =
+      variant === MULTI_VARIANT ? multiplayerSeedFor(profileId, dayId, groupSeed) : profileSeedFor(profileId);
     const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, dayId, seed });
     const secretsOriginal = secretsByMode[settingsRef.mode] || secretsByMode[Modes.termo];
     return createNewGame({ mode: settingsRef.mode, dayId, secretsOriginal, seed, variant });
   }
 
-  function loadOrCreateStateForProfile({ profileId, settingsRef, variant }) {
-    const base = newStateForProfile({ profileId, settingsRef, variant });
+  function loadOrCreateStateForProfile({ profileId, settingsRef, variant, groupSeed = 0 }) {
+    const base = newStateForProfile({ profileId, settingsRef, variant, groupSeed });
     let saved = loadJSON(
       progressKey({ profileId, mode: base.mode, dayId: base.dayId, seed: base.seed }),
       null
@@ -519,6 +536,7 @@ async function main() {
 
   function rebuildMultiplayerStates() {
     if (!multiplayer) return;
+    multiplayer.groupSeed = multiplayerGroupSeed(multiplayer.profileIds);
     multiplayer.resultShown = false;
     const states = {};
     multiplayer.profileIds.forEach((profileId) => {
@@ -526,6 +544,7 @@ async function main() {
         profileId,
         settingsRef: multiSettings,
         variant: MULTI_VARIANT,
+        groupSeed: multiplayer.groupSeed,
       });
       syncStatsForState(profileId, states[profileId]);
     });
@@ -694,6 +713,7 @@ async function main() {
       states: {},
       resultShown: false,
     };
+    multiplayer.groupSeed = multiplayerGroupSeed(multiplayer.profileIds);
     rebuildMultiplayerStates();
     renderActiveState();
     persistActiveState();
