@@ -500,7 +500,24 @@ async function main() {
     const activeViewer = isViewerActive();
     const renderState = activeViewer ? viewerState() || state : state;
     const player = activeViewer ? null : activePlayerInfo();
-    ui.render(renderState, { settings: activeSettingsRef(), player, viewer: viewerInfo() });
+
+    // Build preview data for multiplayer
+    let previews = null;
+    if (multiplayer && !activeViewer) {
+      const mode = activeMode();
+      const currentIdx = currentIndexForMode(mode);
+      const players = multiplayer.profileIds.map((profileId) => {
+        const profile = settingsStore.profiles.find((p) => p.id === profileId);
+        return {
+          id: profileId,
+          name: profile ? profile.name : "Perfil",
+          state: multiplayer.states[profileId],
+        };
+      });
+      previews = { players, currentIndex: currentIdx };
+    }
+
+    ui.render(renderState, { settings: activeSettingsRef(), player, viewer: viewerInfo(), previews });
     if (focus && !ui.modal.isOpen()) ui.initialFocus();
   }
 

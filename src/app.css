@@ -307,10 +307,205 @@ input:focus {
 }
 
 .app[data-viewer="1"] .keyboard,
+.app[data-viewer="1"] .keyboard-row,
 .app[data-viewer="1"] .message,
 .app[data-viewer="1"] .player-status,
 .app[data-viewer="1"] .topbar {
   display: none;
+}
+
+/* Keyboard row layout with preview boards on sides */
+.keyboard-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(12px, 2vmin, 24px);
+}
+
+/* Preview containers */
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.2vmin, 14px);
+  align-items: center;
+  min-width: clamp(80px, 12vmin, 160px);
+}
+
+.preview-container--left {
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+.preview-container--right {
+  align-items: flex-start;
+}
+
+/* Single preview player wrapper */
+.preview-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 0.6vmin, 8px);
+  opacity: 0.85;
+  transition: opacity 0.2s ease, transform 0.35s ease;
+}
+
+.preview-player:hover {
+  opacity: 1;
+}
+
+.preview-player-name {
+  font-size: clamp(12px, 1.6vmin, 16px);
+  font-weight: 800;
+  color: var(--muted);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Preview boards container (for modes with multiple boards) */
+.preview-boards {
+  display: flex;
+  gap: clamp(4px, 0.6vmin, 8px);
+}
+
+.preview-boards--termo {
+  flex-direction: column;
+}
+
+.preview-boards--dueto {
+  flex-direction: row;
+}
+
+.preview-boards--quarteto {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(2px, 0.4vmin, 4px);
+}
+
+/* Single preview board */
+.preview-board {
+  background: var(--panel-2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: clamp(6px, 1vmin, 10px);
+  padding: clamp(3px, 0.5vmin, 6px);
+}
+
+.preview-grid {
+  display: grid;
+  gap: clamp(1px, 0.2vmin, 2px);
+}
+
+.preview-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(1px, 0.2vmin, 2px);
+}
+
+/* Preview cell - smaller version */
+.preview-cell {
+  --preview-size: clamp(11px, 1.6vmin, 18px);
+  width: var(--preview-size);
+  height: var(--preview-size);
+  border-radius: clamp(2px, 0.3vmin, 4px);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.preview-cell--empty {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.preview-cell--pending {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+.preview-cell--absent {
+  background: var(--absent);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.preview-cell--present {
+  background: var(--present);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.preview-cell--correct {
+  background: var(--correct);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Mode-specific preview cell sizes */
+.preview-boards--termo .preview-cell {
+  --preview-size: clamp(22px, 3.2vmin, 36px);
+}
+
+.preview-boards--dueto .preview-cell {
+  --preview-size: clamp(14px, 2.0vmin, 23px);
+}
+
+.preview-boards--quarteto .preview-cell {
+  --preview-size: clamp(8px, 1.2vmin, 14px);
+}
+
+/* Preview animations */
+.preview--slide-in-left {
+  animation: previewSlideInLeft 0.35s ease both;
+}
+
+.preview--slide-out-left {
+  animation: previewSlideOutLeft 0.35s ease both;
+}
+
+@keyframes previewSlideInLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  100% {
+    opacity: 0.85;
+    transform: translateX(0);
+  }
+}
+
+@keyframes previewSlideOutLeft {
+  0% {
+    opacity: 0.85;
+    transform: translateX(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+}
+
+.preview--slide-in-right {
+  animation: previewSlideInRight 0.35s ease both;
+}
+
+@keyframes previewSlideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  100% {
+    opacity: 0.85;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive: hide previews on very small screens */
+@media (max-width: 600px) {
+  .preview-container {
+    display: none;
+  }
 }
 
 .keyboard {

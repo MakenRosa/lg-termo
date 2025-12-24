@@ -1,6 +1,7 @@
 ﻿import { el } from "./dom.js";
 import { createKeyboard } from "./keyboard.js";
 import { createBoards } from "./boards.js";
+import { createPreviewBoards } from "./previewBoards.js";
 import { createModalHost } from "./modals.js";
 import { Modes } from "../core/modes.js";
 
@@ -113,15 +114,21 @@ export function createAppUI({
     onAction: (action) => onKeyboardAction(action),
   });
 
+  // Preview boards for multiplayer mode
+  const previewBoards = createPreviewBoards();
+  const keyboardRow = el("div", { class: "keyboard-row" });
+  keyboardRow.append(previewBoards.leftContainer, keyboard.root, previewBoards.rightContainer);
+
   const modalHost = createModalHost({ onRequestClose: onModalRequestClose });
 
-  main.append(viewerBar, boards.root, playerStatus, message, keyboard.root);
+  main.append(viewerBar, boards.root, playerStatus, message, keyboardRow);
   app.append(topbar, main, modalHost.root);
   root.append(app);
 
   let lastKeyboardPos = keyboard.firstKey();
   let lastTopIndex = 0;
   let viewerActive = false;
+  let lastPlayerIndex = null; // Track for animation direction
 
   function focusTop(index) {
     const all = app.querySelectorAll("button[data-role='top']");
@@ -305,7 +312,7 @@ export function createAppUI({
     app.dataset.colorblind = enabled ? "1" : "0";
   }
 
-  function render(state, { settings, player, viewer }) {
+  function render(state, { settings, player, viewer, previews }) {
     app.dataset.mode = state.mode;
     const selected =
       state.mode === Modes.termo ? 0 : state.mode === Modes.dueto ? 1 : state.mode === Modes.quarteto ? 2 : 0;
@@ -332,6 +339,52 @@ export function createAppUI({
       playerStatus.textContent = "";
       playerStatus.style.display = "none";
       app.dataset.multiplayer = "0";
+    }
+
+    // Render preview boards for multiplayer
+    if (previews && previews.players && previews.players.length > 1 && !viewerActive) {
+      const { players, currentIndex } = previews;
+      const total = players.length;
+
+      // Determine animation direction
+      let animationDirection = null;
+      if (lastPlayerIndex !== null && lastPlayerIndex !== currentIndex) {
+        // Turn advanced - animate left (previous goes left, next comes from right)
+        animationDirection = "left";
+      }
+      lastPlayerIndex = currentIndex;
+
+      // Calculate left and right players based on positioning rules:
+      // - Left: previous player(s) (who just played)
+      // - Right: next player(s) (who will play next)
+      const leftPlayers = [];
+      const rightPlayers = [];
+
+      if (total === 2) {
+        // 2 players: 1 preview on right (the other player)
+        const otherIndex = (currentIndex + 1) % total;
+        rightPlayers.push(players[otherIndex]);
+      } else if (total === 3) {
+        // 3 players: 1 left (previous), 1 right (next)
+        const prevIndex = (currentIndex - 1 + total) % total;
+        const nextIndex = (currentIndex + 1) % total;
+        leftPlayers.push(players[prevIndex]);
+        rightPlayers.push(players[nextIndex]);
+      } else if (total === 4) {
+        // 4 players: 2 left (two previous), 1 right (next)
+        const prevIndex1 = (currentIndex - 1 + total) % total;
+        const prevIndex2 = (currentIndex - 2 + total) % total;
+        const nextIndex = (currentIndex + 1) % total;
+        // Order: most recent on right side of left container
+        leftPlayers.push(players[prevIndex2]);
+        leftPlayers.push(players[prevIndex1]);
+        rightPlayers.push(players[nextIndex]);
+      }
+
+      previewBoards.render({ leftPlayers, rightPlayers, animationDirection });
+    } else {
+      previewBoards.hide();
+      lastPlayerIndex = null;
     }
 
     boards.render(state, { revealRowIndex: lastRevealRowIndex });
