@@ -87,8 +87,8 @@ function localMidnight(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function buildDailySecretsByMode({ pool, dayId, seed }) {
-  const idx = pickDailyModeIndices({ dayId, seed, length: pool.length });
+function buildDailySecretsByMode({ pool, weights, dayId, seed }) {
+  const idx = pickDailyModeIndices({ dayId, seed, length: pool.length, weights });
   return {
     [Modes.termo]: idx.termo.map((i) => pool[i].original),
     [Modes.dueto]: idx.dueto.map((i) => pool[i].original),
@@ -261,11 +261,11 @@ async function main() {
     const baseSeed = profileSeed + MULTI_SEED_OFFSET + groupSeed * MULTI_GROUP_STRIDE;
     const singleSeed = profileSeed;
     const length = lists.pool.length;
-    const singleIdx = pickDailyModeIndices({ dayId, seed: singleSeed, length });
+    const singleIdx = pickDailyModeIndices({ dayId, seed: singleSeed, length, weights: lists.weights });
     const avoid = new Set(singleIdx.termo.concat(singleIdx.dueto, singleIdx.quarteto));
     let seed = baseSeed;
     for (let i = 0; i < 50; i += 1) {
-      const multiIdx = pickDailyModeIndices({ dayId, seed, length });
+      const multiIdx = pickDailyModeIndices({ dayId, seed, length, weights: lists.weights });
       if (!hasOverlapIndices(multiIdx, avoid)) return seed;
       seed += MULTI_GROUP_STRIDE;
     }
@@ -276,7 +276,7 @@ async function main() {
     const dayId = currentDayIdFor(settingsRef);
     const seed =
       variant === MULTI_VARIANT ? multiplayerSeedFor(profileId, dayId, groupSeed) : profileSeedFor(profileId);
-    const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, dayId, seed });
+    const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, weights: lists.weights, dayId, seed });
     const secretsOriginal = secretsByMode[settingsRef.mode] || secretsByMode[Modes.termo];
     return createNewGame({ mode: settingsRef.mode, dayId, secretsOriginal, seed, variant });
   }

@@ -24,6 +24,7 @@ function toWordPairs(list) {
 export async function loadWordLists({ dictionaryPath = "./data/dictionary.json" } = {}) {
   const dictionaryRaw = await fetchJSON(dictionaryPath);
   const dictionary = Array.isArray(dictionaryRaw) ? dictionaryRaw : dictionaryRaw && dictionaryRaw.words;
+  const weightsMap = !Array.isArray(dictionaryRaw) && dictionaryRaw && dictionaryRaw.weights;
 
   const pool = toWordPairs(dictionary);
   if (pool.length === 0) throw new Error("dictionary list is empty or invalid");
@@ -32,7 +33,13 @@ export async function loadWordLists({ dictionaryPath = "./data/dictionary.json" 
   const dictionarySet = new Set();
   for (const w of pool) dictionarySet.add(w.normalized);
 
-  return { pool, dictionarySet };
+  const weights = pool.map(({ original }) => {
+    if (!weightsMap) return 1;
+    const weight = Number(weightsMap[original]);
+    return Number.isFinite(weight) && weight > 0 ? weight : 1;
+  });
+
+  return { pool, dictionarySet, weights };
 }
 
 export function isValidGuess(dictionarySet, guess) {

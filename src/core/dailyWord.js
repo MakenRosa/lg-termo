@@ -61,6 +61,10 @@ export function createXorshift32(seed) {
   };
 }
 
+function randomUnitFloat(rng) {
+  return rng() / 0x100000000;
+}
+
 export function pickRandomUniqueIndices({ count, dayId, seed = 0, length }) {
   if (!Number.isInteger(count) || count <= 0) throw new Error("count must be a positive integer");
   if (!Number.isInteger(length) || length <= 0) throw new Error("length must be a positive integer");
@@ -79,9 +83,48 @@ export function pickRandomUniqueIndices({ count, dayId, seed = 0, length }) {
   return indices;
 }
 
-export function pickDailyModeIndices({ dayId, seed = 0, length }) {
+export function pickWeightedUniqueIndices({ count, dayId, seed = 0, weights }) {
+  if (!Number.isInteger(count) || count <= 0) throw new Error("count must be a positive integer");
+  if (!Array.isArray(weights) || weights.length === 0) throw new Error("weights must be a non-empty array");
+  if (count > weights.length) throw new Error("count cannot be greater than length");
+
+  const rng = createXorshift32(mixSeed(dayId, seed));
+  const poolWeights = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 0));
+  let total = poolWeights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) {
+    return pickRandomUniqueIndices({ count, dayId, seed, length: weights.length });
+  }
+
+  const indices = [];
+  for (let pick = 0; pick < count; pick += 1) {
+    const target = randomUnitFloat(rng) * total;
+    let acc = 0;
+    let chosen = -1;
+    for (let i = 0; i < poolWeights.length; i += 1) {
+      const w = poolWeights[i];
+      if (w <= 0) continue;
+      acc += w;
+      if (target < acc) {
+        chosen = i;
+        break;
+      }
+    }
+    if (chosen === -1) {
+      chosen = poolWeights.findIndex((w) => w > 0);
+      if (chosen === -1) break;
+    }
+    indices.push(chosen);
+    total -= poolWeights[chosen];
+    poolWeights[chosen] = 0;
+  }
+  return indices;
+}
+
+export function pickDailyModeIndices({ dayId, seed = 0, length, weights }) {
   const total = 7; // 1 (Termo) + 2 (Dueto) + 4 (Quarteto)
-  const idx = pickRandomUniqueIndices({ count: total, dayId, seed, length });
+  const idx = Array.isArray(weights)
+    ? pickWeightedUniqueIndices({ count: total, dayId, seed, weights })
+    : pickRandomUniqueIndices({ count: total, dayId, seed, length });
   return {
     termo: [idx[0]],
     dueto: [idx[1], idx[2]],
