@@ -2,8 +2,8 @@ import { applyGuess } from "./gameState.js";
 
 export const STORAGE_VERSION = 1;
 
-export function progressKey({ profileId, mode, dayId, seed }) {
-  return `lgtermo_progress_${profileId}_${mode}_${dayId}_${seed}`;
+export function progressKey({ profileId, mode, dayId, seed, wordLength = 5 }) {
+  return `lgtermo_progress_${profileId}_${mode}_${wordLength}_${dayId}_${seed}`;
 }
 
 export function legacyProgressKey({ mode, dayId, seed }) {
@@ -14,6 +14,7 @@ export function serializeGame(state) {
   return {
     version: STORAGE_VERSION,
     mode: state.mode,
+    wordLength: state.wordLength,
     dayId: state.dayId,
     seed: state.seed,
     guesses: state.guesses,
@@ -35,7 +36,8 @@ export function hydrateGame({ saved, baseState }) {
     }
   }
   if (typeof saved.currentGuess === "string" && st.status === "playing") {
-    st = { ...st, currentGuess: saved.currentGuess.slice(0, 5) };
+    const maxLength = st.wordLength || 5;
+    st = { ...st, currentGuess: saved.currentGuess.slice(0, maxLength) };
   }
   return st;
 }

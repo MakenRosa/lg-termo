@@ -37,6 +37,7 @@ body {
 
 .app {
   /* Responsive sizing (mode overrides below) */
+  --word-length: 5;
   --app-pad-y: clamp(12px, 2.2vh, 24px);
   --app-pad-x: clamp(16px, 2.2vw, 28px);
   --app-gap: clamp(10px, 1.6vh, 16px);
@@ -196,7 +197,7 @@ input:focus {
 
 .row {
   display: grid;
-  grid-template-columns: repeat(5, var(--cell-size));
+  grid-template-columns: repeat(var(--word-length), var(--cell-size));
   gap: var(--cell-gap);
   justify-content: center;
 }
@@ -400,7 +401,7 @@ input:focus {
 
 .preview-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--word-length), 1fr);
   gap: clamp(1px, 0.2vmin, 2px);
 }
 

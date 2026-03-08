@@ -22,7 +22,7 @@ def load_dictionary(path):
         return data, None
     if isinstance(data, dict) and isinstance(data.get("words"), list):
         return data["words"], data
-    raise ValueError("dictionary.json must be a list of words or an object with a 'words' list")
+    raise ValueError("five-letters.json must be a list of words or an object with a 'words' list")
 
 
 def load_frequencies(path, word_column, freq_column, delimiter):
@@ -110,12 +110,12 @@ def clamp_distribution(probs, min_p, max_p):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Add weighted probabilities to dictionary.json based on a character n-gram model."
+        description="Add weighted probabilities to five-letters.json based on a character n-gram model."
     )
     parser.add_argument(
         "--input",
-        default="termo_tv/data/dictionary.json",
-        help="Path to the input dictionary.json",
+        default="termo_tv/data/five-letters.json",
+        help="Path to the input five-letters.json",
     )
     parser.add_argument(
         "--output",
@@ -192,7 +192,7 @@ def main():
 
     words_raw, existing = load_dictionary(input_path)
     if not words_raw:
-        raise ValueError("dictionary.json has no words")
+        raise ValueError("five-letters.json has no words")
 
     normalized = [normalize_word(word) for word in words_raw]
     if any(len(word) != 5 for word in normalized):

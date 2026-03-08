@@ -5,7 +5,8 @@ export function createBoards() {
   const root = el("section", { class: "boards", "aria-label": "Tabuleiros" });
 
   function render(state, { revealRowIndex = null } = {}) {
-    const cfg = modeConfig(state.mode);
+    const cfg = modeConfig(state.mode, { wordLength: state.wordLength });
+    const wordLength = state.wordLength || 5;
     root.className = `boards boards--${state.mode}`;
     clear(root);
 
@@ -32,7 +33,7 @@ export function createBoards() {
           }
         }
 
-        for (let c = 0; c < 5; c += 1) {
+        for (let c = 0; c < wordLength; c += 1) {
           const ch = letters && letters[c] ? letters[c] : "";
           const st = states && states[c] ? states[c] : ch ? "pending" : "empty";
           const cell = el(

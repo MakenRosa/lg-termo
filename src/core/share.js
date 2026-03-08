@@ -1,4 +1,4 @@
-﻿import { modeConfig, Modes } from "./modes.js";
+﻿import { modeConfig, Modes, normalizeWordLength, WordLengths } from "./modes.js";
 
 const EMOJI = Object.freeze({
   correct: "\uD83D\uDFE9",
@@ -7,12 +7,13 @@ const EMOJI = Object.freeze({
   empty: "\u2B1C",
 });
 
-function boardEmojiLines({ guesses, evaluationsForBoard, maxAttempts }) {
+function boardEmojiLines({ guesses, evaluationsForBoard, maxAttempts, wordLength }) {
+  const targetLength = normalizeWordLength(wordLength);
   const lines = [];
   for (let r = 0; r < maxAttempts; r += 1) {
     if (r >= guesses.length) break;
     const evalRow = evaluationsForBoard ? evaluationsForBoard[r] : null;
-    const row = (evalRow || Array(5).fill("empty")).map((s) => EMOJI[s] || EMOJI.empty).join("");
+    const row = (evalRow || Array(targetLength).fill("empty")).map((s) => EMOJI[s] || EMOJI.empty).join("");
     lines.push(row);
   }
   return lines;
@@ -23,7 +24,8 @@ function resultToken({ solvedAt, maxAttempts }) {
 }
 
 export function buildShareText(state) {
-  const cfg = modeConfig(state.mode);
+  const length = normalizeWordLength(state.wordLength || WordLengths.five);
+  const cfg = modeConfig(state.mode, { wordLength: length });
   const dayLabel = `#${state.dayId}`;
 
   const perBoardSolved = state.solvedAt.map((v) => (v == null ? "X" : String(v)));
@@ -43,6 +45,7 @@ export function buildShareText(state) {
       guesses: state.guesses,
       evaluationsForBoard: evalsForBoard,
       maxAttempts: cfg.maxAttempts,
+      wordLength: length,
     });
     lines.push(`Palavra ${b + 1}: ${resultToken({ solvedAt: state.solvedAt[b], maxAttempts: cfg.maxAttempts })}`);
     lines.push(...gridLines);

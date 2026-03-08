@@ -7,7 +7,6 @@ export function normalizeWord(value) {
     .toUpperCase();
 }
 
-export function splitLetters(word) {
-  return normalizeWord(word).split("").slice(0, 5);
+export function splitLetters(word, length = 5) {
+  return normalizeWord(word).split("").slice(0, length);
 }
-

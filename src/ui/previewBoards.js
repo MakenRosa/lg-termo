@@ -47,7 +47,7 @@ export function createPreviewBoards() {
      */
     function createSinglePreview(player, animationDirection, side, index) {
         const { id, name, state } = player;
-        const cfg = modeConfig(state.mode);
+        const cfg = modeConfig(state.mode, { wordLength: state.wordLength });
 
         // Determine animation class
         // When turn changes (animationDirection='left'), new previews slide in:
@@ -90,6 +90,7 @@ export function createPreviewBoards() {
         const grid = el("div", { class: "preview-grid" });
         const solvedAt = Array.isArray(state.solvedAt) ? state.solvedAt[boardIndex] : null;
 
+        const wordLength = state.wordLength || 5;
         for (let r = 0; r < cfg.maxAttempts; r++) {
             const row = el("div", { class: "preview-row" });
             const hideAfterSolved = solvedAt != null && r >= solvedAt;
@@ -106,7 +107,7 @@ export function createPreviewBoards() {
                 }
             }
 
-            for (let c = 0; c < 5; c++) {
+            for (let c = 0; c < wordLength; c++) {
                 const st = states && states[c] ? states[c] : "empty";
                 const cell = el("div", {
                     class: `preview-cell preview-cell--${st}`,

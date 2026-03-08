@@ -1,5 +1,5 @@
 ﻿import { el, clear } from "./dom.js";
-import { modeConfig } from "../core/modes.js";
+import { modeConfig, modeKey, normalizeWordLength, WordLengths } from "../core/modes.js";
 
 const HELP_EMOJI = Object.freeze({
   correct: "\uD83D\uDFE9",
@@ -62,10 +62,11 @@ export function createModalHost({ onRequestClose }) {
     if (btn) btn.focus();
   }
 
-  function renderHelp() {
+  function renderHelp({ wordLength } = {}) {
+    const length = normalizeWordLength(wordLength || WordLengths.five);
     const { overlay, body } = modalShell({ title: "Ajuda", onClose: close });
     body.append(
-      el("p", { class: "p" }, ["Adivinhe a palavra de 5 letras."]),
+      el("p", { class: "p" }, [`Adivinhe a palavra de ${length} letras.`]),
       el("ul", { class: "list" }, [
         el("li", {}, [`${HELP_EMOJI.correct} Letra na posi\u00E7\u00E3o certa.`]),
         el("li", {}, [`${HELP_EMOJI.present} Letra existe em outra posi\u00E7\u00E3o.`]),
@@ -79,8 +80,10 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
-  function renderStats({ statsStore, profiles, currentProfileId, mode }) {
-    const cfg = modeConfig(mode);
+  function renderStats({ statsStore, profiles, currentProfileId, mode, wordLength }) {
+    const length = normalizeWordLength(wordLength || WordLengths.five);
+    const cfg = modeConfig(mode, { wordLength: length });
+    const statsKey = modeKey(mode, length);
     const { overlay, body } = modalShell({ title: `Estat\u00EDsticas - ${cfg.title}`, onClose: close });
     const list = Array.isArray(profiles) ? profiles : [];
     if (list.length === 0) {
@@ -103,7 +106,7 @@ export function createModalHost({ onRequestClose }) {
 
     function modeStatsFor(profileId) {
       const profileStats = statsStore && statsStore.profiles ? statsStore.profiles[profileId] : null;
-      return (profileStats && profileStats[mode]) || emptyModeStats();
+      return (profileStats && profileStats[statsKey]) || emptyModeStats();
     }
 
     function compareHeaderCell(label, extraClass) {
@@ -538,7 +541,7 @@ export function createModalHost({ onRequestClose }) {
   }
 
   function renderResult({ state, onCloseResult }) {
-    const cfg = modeConfig(state.mode);
+    const cfg = modeConfig(state.mode, { wordLength: state.wordLength });
     const title = state.status === "won" ? `Voc\u00EA venceu!` : "Fim de jogo";
     const { overlay, body } = modalShell({ title, onClose: onCloseResult || close });
 
@@ -760,8 +763,48 @@ export function createModalHost({ onRequestClose }) {
     focusFirst();
   }
 
-  function renderMultiplayerResult({ mode, outcome, players, onViewPlayer }) {
-    const cfg = modeConfig(mode);
+
+  function renderWordLengthSelect({ currentLength = WordLengths.five, onSelect, onCancel }) {
+    const length = normalizeWordLength(currentLength);
+    const { overlay, body } = modalShell({
+      title: "Tamanho da palavra",
+      onClose: onCancel || close,
+    });
+
+    body.append(el("p", { class: "p" }, ["Escolha o tamanho da palavra para jogar."]));
+
+    const list = el("div", { class: "profile-grid" });
+    [WordLengths.five, WordLengths.six].forEach((value, idx) => {
+      const label = `${value} letras`;
+      const btn = el(
+        "button",
+        {
+          class: `profile-card ${value == length ? "profile-card--active" : ""}`.trim(),
+          type: "button",
+          onclick: () => onSelect && onSelect(value),
+        },
+        [el("div", { class: "profile-avatar", text: String(value) }), el("div", { class: "profile-card-name", text: label })]
+      );
+      btn.dataset.focusOrder = String(idx);
+      list.append(btn);
+    });
+
+    body.append(list);
+
+    if (onCancel) {
+      const cancelBtn = el(
+        "button",
+        { class: "btn btn--ghost", type: "button", onclick: () => onCancel() },
+        ["Voltar"]
+      );
+      body.append(el("div", { class: "modal-actions" }, [cancelBtn]));
+    }
+
+    show(overlay);
+    focusFirst();
+  }
+  function renderMultiplayerResult({ mode, outcome, players, onViewPlayer, wordLength }) {
+    const cfg = modeConfig(mode, { wordLength });
     const { overlay, body } = modalShell({ title: `Resultado - ${cfg.title}`, onClose: close });
     body.append(el("p", { class: "p" }, [outcome || "Resultado do multijogador."]));
 
@@ -804,6 +847,7 @@ export function createModalHost({ onRequestClose }) {
     renderResult,
     renderProfileSelect,
     renderMultiplayerSelect,
+    renderWordLengthSelect,
     renderMultiplayerResult,
     renderConfirm,
   };

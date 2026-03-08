@@ -1,7 +1,8 @@
 import { normalizeWord } from "./normalize.js";
+import { normalizeWordLength, WordLengths } from "./modes.js";
 
 /**
- * Evaluate a 5-letter guess against a 5-letter secret (Wordle-style).
+ * Evaluate a guess against a secret (Wordle-style).
  *
  * States:
  * - "correct" (green)
@@ -10,24 +11,25 @@ import { normalizeWord } from "./normalize.js";
  *
  * Accent policy: comparison is done with diacritics removed.
  */
-export function evaluateGuess(secret, guess) {
+export function evaluateGuess(secret, guess, wordLength = WordLengths.five) {
   const secretNorm = normalizeWord(secret);
   const guessNorm = normalizeWord(guess);
+  const targetLength = normalizeWordLength(wordLength || secretNorm.length);
 
-  if (secretNorm.length !== 5) {
-    throw new Error(`Secret must normalize to 5 letters, got ${secretNorm.length}`);
+  if (secretNorm.length !== targetLength) {
+    throw new Error(`Secret must normalize to ${targetLength} letters, got ${secretNorm.length}`);
   }
-  if (guessNorm.length !== 5) {
-    throw new Error(`Guess must normalize to 5 letters, got ${guessNorm.length}`);
+  if (guessNorm.length !== targetLength) {
+    throw new Error(`Guess must normalize to ${targetLength} letters, got ${guessNorm.length}`);
   }
 
   const secretLetters = secretNorm.split("");
   const guessLetters = guessNorm.split("");
 
-  const result = Array(5).fill("absent");
+  const result = Array(targetLength).fill("absent");
   const remainingCounts = new Map();
 
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < targetLength; i += 1) {
     if (guessLetters[i] === secretLetters[i]) {
       result[i] = "correct";
       continue;
@@ -36,7 +38,7 @@ export function evaluateGuess(secret, guess) {
     remainingCounts.set(letter, (remainingCounts.get(letter) || 0) + 1);
   }
 
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < targetLength; i += 1) {
     if (result[i] === "correct") continue;
     const letter = guessLetters[i];
     const remaining = remainingCounts.get(letter) || 0;
@@ -49,8 +51,9 @@ export function evaluateGuess(secret, guess) {
   return result;
 }
 
-export function isSolved(evaluation) {
-  return Array.isArray(evaluation) && evaluation.length === 5 && evaluation.every((s) => s === "correct");
+export function isSolved(evaluation, wordLength = WordLengths.five) {
+  const targetLength = normalizeWordLength(wordLength);
+  return Array.isArray(evaluation) && evaluation.length === targetLength && evaluation.every((s) => s === "correct");
 }
 
 export const LetterState = Object.freeze({

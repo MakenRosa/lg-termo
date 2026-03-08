@@ -1,9 +1,17 @@
 ﻿import { normalizeWord } from "./normalize.js";
 import { evaluateGuess, isSolved, bestLetterState } from "./evaluateGuess.js";
-import { modeConfig } from "./modes.js";
+import { modeConfig, normalizeWordLength, WordLengths } from "./modes.js";
 
-export function createNewGame({ mode, dayId, secretsOriginal, seed = 0, variant = "single" }) {
-  const cfg = modeConfig(mode);
+export function createNewGame({
+  mode,
+  dayId,
+  secretsOriginal,
+  seed = 0,
+  variant = "single",
+  wordLength = WordLengths.five,
+}) {
+  const targetLength = normalizeWordLength(wordLength);
+  const cfg = modeConfig(mode, { wordLength: targetLength });
   if (!Array.isArray(secretsOriginal) || secretsOriginal.length !== cfg.boards) {
     throw new Error(`Expected ${cfg.boards} secrets for mode ${mode}`);
   }
@@ -14,12 +22,13 @@ export function createNewGame({ mode, dayId, secretsOriginal, seed = 0, variant 
   }));
 
   for (const s of secrets) {
-    if (s.normalized.length !== 5) throw new Error(`Invalid secret: ${s.original}`);
+    if (s.normalized.length !== targetLength) throw new Error(`Invalid secret: ${s.original}`);
   }
 
   return {
     version: 1,
     mode,
+    wordLength: targetLength,
     seed,
     variant,
     dayId,
@@ -38,15 +47,19 @@ export function createNewGame({ mode, dayId, secretsOriginal, seed = 0, variant 
 }
 
 export function canSubmit(state) {
-  return state.status === "playing" && state.currentGuess.length === 5;
+  return state.status === "playing" && state.currentGuess.length === state.wordLength;
 }
 
 export function addLetter(state, letter) {
   if (state.status !== "playing") return state;
-  if (state.currentGuess.length >= 5) return state;
+  if (state.currentGuess.length >= state.wordLength) return state;
   const l = normalizeWord(letter).slice(0, 1);
   if (!l) return state;
-  return { ...state, currentGuess: (state.currentGuess + l).slice(0, 5), lastMessage: "" };
+  return {
+    ...state,
+    currentGuess: (state.currentGuess + l).slice(0, state.wordLength),
+    lastMessage: "",
+  };
 }
 
 export function removeLetter(state) {
@@ -61,7 +74,9 @@ export function setMessage(state, message) {
 
 export function submitGuess(state, { dictionarySet }) {
   if (state.status !== "playing") return state;
-  if (state.currentGuess.length !== 5) return setMessage(state, "Complete 5 letras.");
+  if (state.currentGuess.length !== state.wordLength) {
+    return setMessage(state, `Complete ${state.wordLength} letras.`);
+  }
 
   const guess = normalizeWord(state.currentGuess);
   if (!(dictionarySet instanceof Set) || !dictionarySet.has(guess)) {
@@ -76,19 +91,19 @@ export function applyGuess(state, guess) {
   if (state.status !== "playing") return state;
   if (state.guesses.length >= state.maxAttempts) return state;
   const g = normalizeWord(guess);
-  if (g.length !== 5) return state;
+  if (g.length !== state.wordLength) return state;
 
-  const perBoard = state.secrets.map((s) => evaluateGuess(s.original, g));
+  const perBoard = state.secrets.map((s) => evaluateGuess(s.original, g, state.wordLength));
   const solvedAt = state.solvedAt.slice();
   for (let b = 0; b < perBoard.length; b += 1) {
-    if (solvedAt[b] == null && isSolved(perBoard[b])) solvedAt[b] = state.guesses.length + 1;
+    if (solvedAt[b] == null && isSolved(perBoard[b], state.wordLength)) solvedAt[b] = state.guesses.length + 1;
   }
 
   const keyboard = { ...state.keyboard };
   const keyboardPerBoard = state.keyboardPerBoard.map((kb) => ({ ...kb }));
   for (let b = 0; b < perBoard.length; b += 1) {
     const evalRow = perBoard[b];
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < state.wordLength; i += 1) {
       const letter = g[i];
       keyboard[letter] = bestLetterState(keyboard[letter] || "absent", evalRow[i]);
       keyboardPerBoard[b][letter] = bestLetterState(keyboardPerBoard[b][letter] || "absent", evalRow[i]);

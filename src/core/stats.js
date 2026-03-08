@@ -1,4 +1,4 @@
-import { modeConfig } from "./modes.js";
+import { modeConfig, modeKey, normalizeWordLength, WordLengths } from "./modes.js";
 
 export function createEmptyStats() {
   return {
@@ -6,6 +6,9 @@ export function createEmptyStats() {
     termo: emptyModeStats(),
     dueto: emptyModeStats(),
     quarteto: emptyModeStats(),
+    termo6: emptyModeStats(),
+    dueto6: emptyModeStats(),
+    quarteto6: emptyModeStats(),
   };
 }
 
@@ -25,14 +28,16 @@ function emptyModeStats() {
 }
 
 export function recordFinishedGame(stats, state) {
+  const length = normalizeWordLength(state.wordLength || WordLengths.five);
   const mode = state.mode;
-  const modeStats = stats && stats[mode];
+  const modeId = modeKey(mode, length);
+  const modeStats = stats && stats[modeId];
   if (!modeStats) return stats;
   if (state.status !== "won" && state.status !== "lost") return stats;
 
   const variant = state.variant || "single";
-  const dayKey = String(state.dayId);
-  const gameKey = `${state.dayId}:${state.seed}:${variant}`;
+  const dayKey = `${state.dayId}:${length}`;
+  const gameKey = `${state.dayId}:${length}:${state.seed}:${variant}`;
   if (!modeStats.resultsByGameKey) modeStats.resultsByGameKey = {};
   if (!modeStats.resultsByDayId) modeStats.resultsByDayId = {};
   const already = modeStats.resultsByGameKey[gameKey];
@@ -42,11 +47,11 @@ export function recordFinishedGame(stats, state) {
     !!modeStats.resultsByDayId[dayKey] ||
     Object.keys(modeStats.resultsByGameKey).some((key) => String(key).startsWith(`${dayKey}:`));
 
-  const cfg = modeConfig(mode);
+  const cfg = modeConfig(mode, { wordLength: length });
   const finishedAt = state.status === "won" ? Math.max(...state.solvedAt.filter((v) => v != null)) : cfg.maxAttempts;
 
   const next = JSON.parse(JSON.stringify(stats));
-  const ms = next[mode];
+  const ms = next[modeId];
   if (!ms.resultsByGameKey) ms.resultsByGameKey = {};
   if (!ms.resultsByDayId) ms.resultsByDayId = {};
 
@@ -99,12 +104,17 @@ export function recordFinishedGame(stats, state) {
   const dayKeys = Object.keys(ms.resultsByDayId);
   if (dayKeys.length > 400) {
     dayKeys
-      .map((k) => Number(k))
-      .filter((n) => Number.isFinite(n))
+      .map((k) => {
+        const day = Number(String(k).split(":")[0]);
+        return Number.isFinite(day) ? day : null;
+      })
+      .filter((n) => n != null)
       .sort((a, b) => a - b)
       .slice(0, dayKeys.length - 400)
       .forEach((day) => {
-        delete ms.resultsByDayId[String(day)];
+        Object.keys(ms.resultsByDayId).forEach((key) => {
+          if (String(key).startsWith(`${day}:`)) delete ms.resultsByDayId[key];
+        });
       });
   }
 

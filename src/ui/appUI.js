@@ -314,6 +314,9 @@ export function createAppUI({
 
   function render(state, { settings, player, viewer, previews }) {
     app.dataset.mode = state.mode;
+    const wordLength = state.wordLength || 5;
+    app.dataset.wordLength = String(wordLength);
+    app.style.setProperty("--word-length", wordLength);
     const selected =
       state.mode === Modes.termo ? 0 : state.mode === Modes.dueto ? 1 : state.mode === Modes.quarteto ? 2 : 0;
     modeButtons.forEach((b, i) => b.classList.toggle("top-btn--active", i === selected));
@@ -389,7 +392,7 @@ export function createAppUI({
 
     boards.render(state, { revealRowIndex: lastRevealRowIndex });
     keyboard.render(state.keyboard, state.keyboardPerBoard);
-    if (state.currentGuess && state.currentGuess.length >= 5) {
+    if (state.currentGuess && state.currentGuess.length >= wordLength) {
       const active = document.activeElement;
       if (active && active.dataset && active.dataset.role === "kb") {
         focusKeyboard(keyboard.enterKey());

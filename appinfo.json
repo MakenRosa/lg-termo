@@ -1,6 +1,6 @@
 {
   "id": "com.domain.app",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "vendor": "My Company",
   "type": "web",
   "main": "index.html",

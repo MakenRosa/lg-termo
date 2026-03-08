@@ -1,6 +1,6 @@
 ﻿import { loadWordLists } from "./core/wordLists.js";
 import { dayIdFromLocalDate, pickDailyModeIndices } from "./core/dailyWord.js";
-import { Modes } from "./core/modes.js";
+import { Modes, normalizeWordLength, WordLengths } from "./core/modes.js";
 import { createNewGame, addLetter, removeLetter, submitGuess, setMessage } from "./core/gameState.js";
 import { loadJSON, saveJSON, remove } from "./core/storage.js";
 import { createEmptyStats, recordFinishedGame } from "./core/stats.js";
@@ -19,12 +19,21 @@ const MULTI_SEED_OFFSET = 1000;
 const MULTI_GROUP_STRIDE = 97;
 const SINGLE_VARIANT = "single";
 const MULTI_VARIANT = "multi";
+const MODE_STATS_KEYS = [
+  Modes.termo,
+  Modes.dueto,
+  Modes.quarteto,
+  `${Modes.termo}6`,
+  `${Modes.dueto}6`,
+  `${Modes.quarteto}6`,
+];
 
 function defaultProfileSettings() {
   return {
     mode: Modes.termo,
     colorblind: false,
     fixedDate: null,
+    wordLength: WordLengths.five,
   };
 }
 
@@ -87,12 +96,17 @@ function localMidnight(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function buildDailySecretsByMode({ pool, weights, dayId, seed }) {
-  const idx = pickDailyModeIndices({ dayId, seed, length: pool.length, weights });
+function buildDailySecretsByMode({ lists, dayId, seed }) {
+  const idx = pickDailyModeIndices({
+    dayId,
+    seed,
+    length: lists.pool.length,
+    weights: lists.weights,
+  });
   return {
-    [Modes.termo]: idx.termo.map((i) => pool[i].original),
-    [Modes.dueto]: idx.dueto.map((i) => pool[i].original),
-    [Modes.quarteto]: idx.quarteto.map((i) => pool[i].original),
+    [Modes.termo]: idx.termo.map((i) => lists.pool[i].original),
+    [Modes.dueto]: idx.dueto.map((i) => lists.pool[i].original),
+    [Modes.quarteto]: idx.quarteto.map((i) => lists.pool[i].original),
   };
 }
 
@@ -136,14 +150,16 @@ async function main() {
   if (!statsStore.profiles) statsStore.profiles = {};
 
   function ensureProfileSettings(profileId) {
-    if (!settingsStore.profileSettings[profileId]) {
-      settingsStore.profileSettings[profileId] = defaultProfileSettings();
-    }
+    const defaults = defaultProfileSettings();
+    const current = settingsStore.profileSettings[profileId] || {};
+    settingsStore.profileSettings[profileId] = { ...defaults, ...current };
     return settingsStore.profileSettings[profileId];
   }
 
   function ensureMultiSettings() {
-    if (!settingsStore.multiSettings) settingsStore.multiSettings = defaultMultiSettings();
+    const defaults = defaultMultiSettings();
+    const current = settingsStore.multiSettings || {};
+    settingsStore.multiSettings = { ...defaults, ...current };
     return settingsStore.multiSettings;
   }
 
@@ -153,10 +169,10 @@ async function main() {
     }
     const profileStats = statsStore.profiles[profileId];
     const defaults = createEmptyStats();
-    [Modes.termo, Modes.dueto, Modes.quarteto].forEach((mode) => {
-      if (!profileStats[mode]) profileStats[mode] = defaults[mode];
-      if (!profileStats[mode].resultsByGameKey) profileStats[mode].resultsByGameKey = {};
-      if (!profileStats[mode].resultsByDayId) profileStats[mode].resultsByDayId = {};
+    MODE_STATS_KEYS.forEach((modeKey) => {
+      if (!profileStats[modeKey]) profileStats[modeKey] = defaults[modeKey];
+      if (!profileStats[modeKey].resultsByGameKey) profileStats[modeKey].resultsByGameKey = {};
+      if (!profileStats[modeKey].resultsByDayId) profileStats[modeKey].resultsByDayId = {};
     });
     return profileStats;
   }
@@ -234,12 +250,32 @@ async function main() {
     saveSettingsStore();
   }
 
-  let lists;
+  let listsByLength;
   try {
-    lists = await loadWordLists();
+    const fiveLists = await loadWordLists({
+      dictionaryPath: "./data/five-letters.json",
+      wordLength: WordLengths.five,
+    });
+    const sixLists = await loadWordLists({
+      dictionaryPath: "./data/six-letters.json",
+      wordLength: WordLengths.six,
+    });
+    listsByLength = {
+      [WordLengths.five]: fiveLists,
+      [WordLengths.six]: sixLists,
+    };
   } catch (e) {
     root.textContent = `Erro ao carregar listas locais: ${(e && e.message) || e}`;
     return;
+  }
+
+  function listsForLength(length) {
+    const normalized = normalizeWordLength(length);
+    return listsByLength[normalized] || listsByLength[WordLengths.five];
+  }
+
+  function listsForState(stateRef) {
+    return listsForLength(stateRef.wordLength);
   }
 
   function currentDayIdFor(settingsRef) {
@@ -256,16 +292,22 @@ async function main() {
     return all.some((idx) => avoidSet.has(idx));
   }
 
-  function multiplayerSeedFor(profileId, dayId, groupSeed = 0) {
+  function multiplayerSeedFor(profileId, dayId, wordLength, groupSeed = 0) {
+    const activeLists = listsForLength(wordLength);
     const profileSeed = profileSeedFor(profileId);
     const baseSeed = profileSeed + MULTI_SEED_OFFSET + groupSeed * MULTI_GROUP_STRIDE;
     const singleSeed = profileSeed;
-    const length = lists.pool.length;
-    const singleIdx = pickDailyModeIndices({ dayId, seed: singleSeed, length, weights: lists.weights });
+    const length = activeLists.pool.length;
+    const singleIdx = pickDailyModeIndices({
+      dayId,
+      seed: singleSeed,
+      length,
+      weights: activeLists.weights,
+    });
     const avoid = new Set(singleIdx.termo.concat(singleIdx.dueto, singleIdx.quarteto));
     let seed = baseSeed;
     for (let i = 0; i < 50; i += 1) {
-      const multiIdx = pickDailyModeIndices({ dayId, seed, length, weights: lists.weights });
+      const multiIdx = pickDailyModeIndices({ dayId, seed, length, weights: activeLists.weights });
       if (!hasOverlapIndices(multiIdx, avoid)) return seed;
       seed += MULTI_GROUP_STRIDE;
     }
@@ -274,20 +316,46 @@ async function main() {
 
   function newStateForProfile({ profileId, settingsRef, variant, groupSeed = 0 }) {
     const dayId = currentDayIdFor(settingsRef);
+    const wordLength = normalizeWordLength(settingsRef.wordLength);
     const seed =
-      variant === MULTI_VARIANT ? multiplayerSeedFor(profileId, dayId, groupSeed) : profileSeedFor(profileId);
-    const secretsByMode = buildDailySecretsByMode({ pool: lists.pool, weights: lists.weights, dayId, seed });
+      variant === MULTI_VARIANT
+        ? multiplayerSeedFor(profileId, dayId, wordLength, groupSeed)
+        : profileSeedFor(profileId);
+    const listsForMode = listsForLength(wordLength);
+    const secretsByMode = buildDailySecretsByMode({ lists: listsForMode, dayId, seed });
     const secretsOriginal = secretsByMode[settingsRef.mode] || secretsByMode[Modes.termo];
-    return createNewGame({ mode: settingsRef.mode, dayId, secretsOriginal, seed, variant });
+    return createNewGame({
+      mode: settingsRef.mode,
+      dayId,
+      secretsOriginal,
+      seed,
+      variant,
+      wordLength,
+    });
   }
 
   function loadOrCreateStateForProfile({ profileId, settingsRef, variant, groupSeed = 0 }) {
     const base = newStateForProfile({ profileId, settingsRef, variant, groupSeed });
     let saved = loadJSON(
-      progressKey({ profileId, mode: base.mode, dayId: base.dayId, seed: base.seed }),
+      progressKey({
+        profileId,
+        mode: base.mode,
+        dayId: base.dayId,
+        seed: base.seed,
+        wordLength: base.wordLength,
+      }),
       null
     );
-    if (!saved && variant === SINGLE_VARIANT && profileId === DEFAULT_PROFILE_ID) {
+    if (!saved && base.wordLength === WordLengths.five) {
+      const legacyKeyWithProfile = `lgtermo_progress_${profileId}_${base.mode}_${base.dayId}_${base.seed}`;
+      saved = loadJSON(legacyKeyWithProfile, null);
+    }
+    if (
+      !saved &&
+      variant === SINGLE_VARIANT &&
+      profileId === DEFAULT_PROFILE_ID &&
+      base.wordLength === WordLengths.five
+    ) {
       saved = loadJSON(legacyProgressKey({ mode: base.mode, dayId: base.dayId, seed: base.seed }), null);
     }
     return hydrateGame({ saved, baseState: base });
@@ -338,13 +406,14 @@ async function main() {
       if (isViewerActive() && action !== "exit") {
         closeViewer({ returnToModal: false });
       }
-      if (action === "help") ui.modal.renderHelp();
+      if (action === "help") ui.modal.renderHelp({ wordLength: state.wordLength });
       else if (action === "stats")
         ui.modal.renderStats({
           statsStore,
           profiles: settingsStore.profiles,
           currentProfileId: activeProfileId(),
           mode: state.mode,
+          wordLength: state.wordLength,
         });
       else if (action === "settings") openSettingsModal();
       else if (action === "exit") exitApp();
@@ -486,7 +555,13 @@ async function main() {
 
   function persistState(profileId, nextState) {
     saveJSON(
-      progressKey({ profileId, mode: nextState.mode, dayId: nextState.dayId, seed: nextState.seed }),
+      progressKey({
+        profileId,
+        mode: nextState.mode,
+        dayId: nextState.dayId,
+        seed: nextState.seed,
+        wordLength: nextState.wordLength,
+      }),
       serializeGame(nextState)
     );
   }
@@ -664,14 +739,42 @@ async function main() {
     if (state.status !== "playing") showResultModal();
   }
 
+  function openWordLengthSelect({ variant, profileId, profileIds }) {
+    const settingsRef = variant === MULTI_VARIANT ? multiSettings : ensureProfileSettings(profileId);
+    const currentLength = normalizeWordLength(settingsRef.wordLength);
+    ui.modal.renderWordLengthSelect({
+      currentLength,
+      onSelect: (length) => {
+        const value = normalizeWordLength(length);
+        ui.modal.close();
+        if (variant === MULTI_VARIANT) {
+          multiSettings = { ...multiSettings, wordLength: value };
+          settingsStore.multiSettings = multiSettings;
+          saveSettingsStore();
+          startMultiplayer(profileIds);
+        } else {
+          settingsStore.profileSettings[profileId] = {
+            ...ensureProfileSettings(profileId),
+            wordLength: value,
+          };
+          saveSettingsStore();
+          setCurrentProfile(profileId);
+        }
+      },
+      onCancel: () => {
+        if (variant === MULTI_VARIANT) openMultiplayerSelect();
+        else openProfileSelect();
+      },
+    });
+  }
+
   function openProfileSelect() {
     ui.modal.renderProfileSelect({
       profiles: settingsStore.profiles,
       currentProfileId: activeProfileId(),
       maxProfiles: MAX_PROFILES,
       onSelect: (profileId) => {
-        ui.modal.close();
-        setCurrentProfile(profileId);
+        openWordLengthSelect({ variant: SINGLE_VARIANT, profileId });
       },
       onSelectMultiplayer: () => {
         if (settingsStore.profiles.length < MULTI_MIN_PLAYERS) {
@@ -696,8 +799,7 @@ async function main() {
         statsStore.profiles[id] = createEmptyStats();
         saveSettingsStore();
         saveStatsStore();
-        ui.modal.close();
-        setCurrentProfile(id);
+        openWordLengthSelect({ variant: SINGLE_VARIANT, profileId: id });
       },
     });
   }
@@ -708,8 +810,7 @@ async function main() {
       minPlayers: MULTI_MIN_PLAYERS,
       maxPlayers: MULTI_MAX_PLAYERS,
       onStart: (profileIds) => {
-        ui.modal.close();
-        startMultiplayer(profileIds);
+        openWordLengthSelect({ variant: MULTI_VARIANT, profileIds });
       },
       onCancel: () => openProfileSelect(),
     });
@@ -781,7 +882,15 @@ async function main() {
           cancelLabel: "Cancelar",
           onConfirm: () => {
             const profileId = activeProfileId();
-            remove(progressKey({ profileId, mode: state.mode, dayId: state.dayId, seed: state.seed }));
+            remove(
+              progressKey({
+                profileId,
+                mode: state.mode,
+                dayId: state.dayId,
+                seed: state.seed,
+                wordLength: state.wordLength,
+              })
+            );
             if (!multiplayer && profileId === DEFAULT_PROFILE_ID) {
               remove(legacyProgressKey({ mode: state.mode, dayId: state.dayId, seed: state.seed }));
             }
@@ -964,6 +1073,7 @@ async function main() {
     const { players, outcome } = buildMultiplayerResultData();
     ui.modal.renderMultiplayerResult({
       mode: state.mode,
+      wordLength: state.wordLength,
       outcome,
       players,
       onViewPlayer: (profileId) => {
@@ -983,7 +1093,7 @@ async function main() {
     if (isViewerActive()) return;
     if (turnLock) return;
     const before = state;
-    const next = submitGuess(state, { dictionarySet: lists.dictionarySet });
+    const next = submitGuess(state, { dictionarySet: listsForState(state).dictionarySet });
     const guessApplied = next.guesses.length > before.guesses.length;
 
     if (guessApplied) {
