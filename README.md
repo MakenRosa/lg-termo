@@ -4,6 +4,17 @@ TermoTV e um jogo diario de palavras inspirado em Termo/Wordle, feito para rodar
 
 O projeto e um app web empacotado para webOS TV. Ele roda offline, gera as palavras do dia de forma deterministica e oferece variantes de jogo para 5 e 6 letras.
 
+## English summary
+
+An offline daily word game for LG webOS TVs, designed for remote-control navigation. It supports single, double, and four-board modes, five- and six-letter words, deterministic daily selection, and local progress persistence. The automated tests exercise game rules and state restoration; they do not certify behavior on a physical TV.
+
+## Decisões técnicas
+
+- **Lógica separada da interface.** As regras em [src/core](src/core) permitem testar palavras repetidas, acentos, tentativas e retomada sem abrir uma TV ou um navegador.
+- **Seleção diária sem servidor.** Data local, semente e listas de palavras determinam os desafios. Isso permite jogar offline; relógio e fuso do dispositivo fazem parte dessa escolha.
+- **Retomada da partida.** A [persistência](src/core/persistence.js) serializa as tentativas e reconstrói as avaliações ao carregar o estado.
+- **Interação de TV.** A interface usa foco e teclado virtual para controle remoto. A validação dessa experiência em hardware é separada dos testes de regras.
+
 ## Funcionalidades
 
 - Modos `Termo`, `Dueto` e `Quarteto`
@@ -58,6 +69,8 @@ http://127.0.0.1:4173/
 ```bash
 node tests/run-tests.mjs
 ```
+
+O [workflow de testes](https://github.com/MakenRosa/lg-termo/actions/workflows/ci.yml) executa esse comando em pushes para `main` e pull requests, com Node.js 24. Não precisa instalar dependências npm. Os testes cobrem avaliação das letras, seleção diária, aplicação de tentativas aos tabuleiros e retomada do estado. Empacotamento, controle remoto e comportamento em uma TV real precisam de validação própria.
 
 ## Empacotar para webOS
 
